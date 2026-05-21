@@ -228,9 +228,23 @@ export const toggleSimulate = () => (dispatch) => {
   })
 }
 
-// Api call for searching components via backend SearchFilter
-export const fetchComponentsBySearch = (query) => (dispatch) => {
+// Ignore stale search responses when the user types quickly.
+let latestSearchRequestId = 0
+
+// Maps UI "Search By" values to libAPI django-filter query params (LibraryComponentFilterSet).
+export const componentSearchFilterParams = {
+  ALL: null,
+  NAME: 'name__icontains',
+  KEYWORD: 'keyword__icontains',
+  DESCRIPTION: 'description__icontains',
+  COMPONENT_LIBRARY: 'component_library__library_name__icontains',
+  PREFIX: 'symbol_prefix'
+}
+
+// Api call for searching components via backend SearchFilter or field filters
+export const fetchComponentsBySearch = (query, searchOption = 'ALL') => (dispatch) => {
   if (!query || !query.trim()) {
+    latestSearchRequestId += 1
     dispatch({
       type: actions.SEARCH_COMPONENTS_SUCCESS,
       payload: []
@@ -238,9 +252,12 @@ export const fetchComponentsBySearch = (query) => (dispatch) => {
     return
   }
 
+  const requestId = latestSearchRequestId + 1
+  latestSearchRequestId = requestId
+
   dispatch({ type: actions.SEARCH_COMPONENTS_LOADING })
 
-  const token = store.getState().authReducer.token
+  const token = store.getState().authReducer.token || localStorage.getItem('esim_token')
   const config = {
     headers: {
       'Content-Type': 'application/json'
@@ -248,9 +265,20 @@ export const fetchComponentsBySearch = (query) => (dispatch) => {
   }
   if (token) { config.headers.Authorization = `Token ${token}` }
 
-  api.get(`components/?search=${encodeURIComponent(query.trim())}`, config)
+  const trimmed = encodeURIComponent(query.trim())
+  const filterParam = componentSearchFilterParams[searchOption] !== undefined
+    ? componentSearchFilterParams[searchOption]
+    : null
+  const url = filterParam
+    ? `components/?${filterParam}=${trimmed}`
+    : `components/?search=${trimmed}`
+
+  api.get(url, config)
     .then(
       (res) => {
+        if (requestId !== latestSearchRequestId) {
+          return
+        }
         dispatch({
           type: actions.SEARCH_COMPONENTS_SUCCESS,
           payload: res.data
@@ -258,6 +286,9 @@ export const fetchComponentsBySearch = (query) => (dispatch) => {
       }
     )
     .catch((err) => {
+      if (requestId !== latestSearchRequestId) {
+        return
+      }
       console.error(err)
       dispatch({
         type: actions.SEARCH_COMPONENTS_ERROR,
