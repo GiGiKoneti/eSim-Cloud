@@ -161,10 +161,11 @@ export default function SideComp ({ favourite, setFavourite, component }) {
           <img
             ref={imageRef}
             className='compImage'
-            src={'../' + component.svg_path}
-            alt="Logo"
+            src={'../' + (component.svg_path || '')}
+            alt={component.name || 'component'}
             aria-describedby={id}
             onClick={handleClick}
+            onError={(e) => { e.target.style.visibility = 'hidden' }}  // R7: hide broken images
           />
         </Tooltip>
 

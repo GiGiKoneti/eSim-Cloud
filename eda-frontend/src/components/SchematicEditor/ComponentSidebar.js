@@ -11,7 +11,8 @@ import {
   Tooltip,
   Divider,
   Typography,
-  Chip
+  Chip,
+  CircularProgress          // R2: moved from deep import to named import
 } from '@material-ui/core'
 import { makeStyles } from '@material-ui/core/styles'
 import ExpandLess from '@material-ui/icons/ExpandLess'
@@ -22,7 +23,6 @@ import StarIcon from '@material-ui/icons/Star'
 import './Helper/SchematicEditor.css'
 import { useDispatch, useSelector } from 'react-redux'
 import { fetchLibraries, toggleCollapse, fetchComponents, toggleSimulate, fetchComponentsBySearch } from '../../redux/actions/index'
-import CircularProgress from '@material-ui/core/CircularProgress'
 import SideComp from './SideComp.js'
 import ComponentSearchBar from './ComponentSearchBar'
 import SimulationProperties from './SimulationProperties'
@@ -76,7 +76,7 @@ export default function ComponentSidebar ({ compRef, ltiSimResult, setLtiSimResu
   const auth = useSelector(state => state.authReducer)
 
   const dispatch = useDispatch()
-  const [favourite, setFavourite] = useState(null)
+  const [favourite, setFavourite] = useState([])  // R1: [] not null; null causes ambiguity between "not loaded" and "empty"
   const [favOpen, setFavOpen] = useState(false)
   const [uploaded, setuploaded] = useState(false)
   const [def, setdef] = useState(false)
@@ -180,9 +180,7 @@ export default function ComponentSidebar ({ compRef, ltiSimResult, setLtiSimResu
 
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, []) // empty deps — ref is stable; setActiveSearchQuery is a stable setter
-          // Fix #14: removed redundant setActiveSearchQuery('') from Escape branch
-          //   — clear() already calls onSearchChange → handleSearchChange → setActiveSearchQuery('')
+  }, []) // stable: searchBarRef is a ref; keydown handler is self-contained
 
   const handleCollapse = (id) => {
     // Fetches Components for given library if not already fetched
@@ -246,9 +244,6 @@ export default function ComponentSidebar ({ compRef, ltiSimResult, setLtiSimResu
     )
   }
 
-  const handleFavOpen = () => {
-    setFavOpen(!favOpen)
-  }
 
   return (
     <>
@@ -345,7 +340,7 @@ export default function ComponentSidebar ({ compRef, ltiSimResult, setLtiSimResu
 
             {activeSearchQuery.trim() === '' && auth.isAuthenticated && favourite && favourite.length > 0 &&
               <>
-                <ListItem button onClick={handleFavOpen} divider>
+                <ListItem button onClick={() => setFavOpen((prev) => !prev)} divider>
                   <span className={classes.head}>Favourite Components</span>
                   <div>
                     {favOpen ? <ExpandLess /> : <ExpandMore />}
@@ -463,5 +458,5 @@ export default function ComponentSidebar ({ compRef, ltiSimResult, setLtiSimResu
 ComponentSidebar.propTypes = {
   compRef: PropTypes.object.isRequired,
   ltiSimResult: PropTypes.string,
-  setLtiSimResult: PropTypes.string
+  setLtiSimResult: PropTypes.func        // R4: was PropTypes.string — it is a state setter function
 }

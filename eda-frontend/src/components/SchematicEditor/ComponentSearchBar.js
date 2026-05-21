@@ -59,16 +59,16 @@ const ComponentSearchBar = React.forwardRef(function ComponentSearchBar (
       }
     },
     clear () {
+      // R3: don't call onSearchChange directly here — the debounce useEffect
+      // will fire 300ms after setInputValue('') and notify the parent cleanly.
+      // Calling both caused a double API request on every Escape keypress.
       setInputValue('')
-      onSearchChange('', searchOption)
-      if (inputRef.current) {
-        inputRef.current.blur()
-      }
+      if (inputRef.current) inputRef.current.blur()
     },
     isFocused () {
       return document.activeElement === inputRef.current
     }
-  }), [onSearchChange, searchOption])
+  }), []) // stable: only uses refs and state setters, no changing values
 
   const notifyParent = useCallback((query, option) => {
     onSearchChange(query, option)
