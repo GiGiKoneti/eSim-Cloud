@@ -28,9 +28,7 @@ const useStyles = makeStyles((theme) => ({
   card: {
     borderLeft: `4px solid ${theme.palette.error.main}`,
     marginBottom: theme.spacing(2),
-    backgroundColor: theme.palette.error.light
-      ? 'rgba(244,67,54,0.08)'
-      : '#fff3f3'
+    backgroundColor: theme.palette.background.paper
   },
   /** Bold summary line at the top of the card. */
   summary: {

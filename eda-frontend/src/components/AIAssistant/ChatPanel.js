@@ -26,6 +26,7 @@ import Divider from '@material-ui/core/Divider'
 import CircularProgress from '@material-ui/core/CircularProgress'
 import api from '../../utils/Api'
 import store from '../../redux/store'
+import { buildEditorContext } from './contextBuilder'
 
 const useStyles = makeStyles((theme) => ({
   root: {
@@ -165,7 +166,7 @@ export default function ChatPanel () {
     try {
       const response = await api.post(
         'chat/message/',
-        { message: trimmed, context: { page: 'simulator' } },
+        { message: trimmed, context: buildEditorContext() },
         config
       )
       // Backend returns { reply: "<string>" }
