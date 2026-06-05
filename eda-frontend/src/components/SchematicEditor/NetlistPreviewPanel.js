@@ -27,7 +27,8 @@ import { useSelector, useDispatch } from 'react-redux'
 import { useHistory } from 'react-router-dom'
 import { setNetlist } from '../../redux/actions/index'
 
-import { buildNetlistFromGraph, sanitizeNetlistForExport } from './Helper/NetlistExporter'
+import { sanitizeNetlistForExport } from './Helper/NetlistExporter'
+import { GenerateNetList } from './Helper/ToolbarTools'
 
 const useStyles = makeStyles((theme) => ({
   actions: {
@@ -58,6 +59,7 @@ export default function NetlistPreviewPanel ({ gridRef }) {
   const [themeState, setThemeState] = useState({ checkedA: false })
 
   const schSave = useSelector(state => state.saveSchematicReducer)
+  const netfile = useSelector(state => state.netlistReducer)
   const projectName = schSave.title || 'Untitled_Schematic'
   const history = useHistory()
   const dispatch = useDispatch()
@@ -80,12 +82,45 @@ export default function NetlistPreviewPanel ({ gridRef }) {
       if (!gridRef || !gridRef.current || !gridRef.current.graph) {
         setNetlistText('// Error: Graph not loaded yet.')
       } else {
-        const graph = gridRef.current.graph
         try {
-          const result = buildNetlistFromGraph(graph)
-          setNetlistText(result.main)
-          setSnackMessage('Netlist refreshed successfully!')
-          setSnackOpen(true)
+          const compNetlist = GenerateNetList()
+          if (!compNetlist) {
+            setNetlistText('// Error: ERC check failed. Netlist not generated.')
+          } else {
+            let printToPlotControlBlock = ''
+            if (netfile && netfile.controlBlock) {
+              const ctrlblk = netfile.controlBlock.split('\n')
+              for (let line = 0; line < ctrlblk.length; line++) {
+                if (ctrlblk[line].includes('print')) {
+                  printToPlotControlBlock += 'plot '
+                  let cleanCode = ctrlblk[line].split('print ')[1]
+                  cleanCode = cleanCode.split('>')[0]
+                  printToPlotControlBlock += cleanCode + '\n'
+                } else {
+                  printToPlotControlBlock += ctrlblk[line] + '\n'
+                }
+              }
+            }
+
+            const title = (netfile && netfile.title) ? netfile.title : projectName
+            const controlLine = (netfile && netfile.controlLine) ? netfile.controlLine : ''
+
+            const fullNetlist =
+              title +
+              '\n\n' +
+              compNetlist.models +
+              '\n' +
+              compNetlist.main +
+              '\n' +
+              controlLine +
+              '\n' +
+              printToPlotControlBlock +
+              '\n'
+
+            setNetlistText(fullNetlist)
+            setSnackMessage('Netlist refreshed successfully!')
+            setSnackOpen(true)
+          }
         } catch (e) {
           setNetlistText('// Error generating netlist:\n// ' + e.message)
         }
@@ -127,7 +162,11 @@ export default function NetlistPreviewPanel ({ gridRef }) {
   }
 
   const handleSendToSimulator = () => {
-    const sanitized = sanitizeNetlistForExport(netlistText)
+    let sanitized = sanitizeNetlistForExport(netlistText)
+    const lowerCode = sanitized.toLowerCase()
+    if (!lowerCode.includes('.tran') && !lowerCode.includes('.ac') && !lowerCode.includes('.dc ') && !lowerCode.includes('.op')) {
+      sanitized += "\n* -- Add your simulation command here --\n.tran 1u 1m 0\n.control\nrun\nplot all\n.endc\n.end\n"
+    }
     dispatch(setNetlist(sanitized))
     setSnackMessage('Netlist loaded in Simulator')
     setSnackOpen(true)

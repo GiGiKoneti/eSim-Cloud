@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { Container, Grid, Button, Paper, Typography, Switch, FormControlLabel } from '@material-ui/core'
+import MuiAlert from '@material-ui/lab/Alert'
 import { makeStyles } from '@material-ui/core/styles'
 import Editor from '../components/Simulator/Editor'
 import textToFile from '../components/Simulator/textToFile'
@@ -9,9 +10,6 @@ import { setResultGraph, setResultText, setNetlist } from '../redux/actions/inde
 import Notice from '../components/Shared/Notice'
 import { sanitizeNetlistForExport } from '../components/SchematicEditor/Helper/NetlistExporter'
 import ErrorExplainerCard from '../components/Simulator/ErrorExplainerCard'
-// ChatPanel is mounted unconditionally so its window event listener is always
-// registered. Conditional rendering would unmount it (removing the listener)
-// before the CustomEvent from handleAskAI fires, causing the event to be missed.
 import ChatPanel from '../components/AIAssistant/ChatPanel'
 import SimulationHistoryDrawer from '../components/Simulator/SimulationHistoryDrawer'
 import { saveSimulationRun } from '../utils/simulationHistory'
@@ -43,6 +41,8 @@ export default function Simulator () {
   // errorHelp holds the structured error_help object from the backend parser,
   // or null when no structured help is available (backward-compatibility).
   const [errorHelp, setErrorHelp] = useState(null)
+  
+  const [missingSimCmd, setMissingSimCmd] = useState(false)
   
   // History drawer state
   const [historyOpen, setHistoryOpen] = useState(false)
@@ -79,10 +79,19 @@ export default function Simulator () {
   }
 
   const handleSimulationButtonClick = () => {
+    const lowerCode = netlistCode.toLowerCase()
+    if (!lowerCode.includes('.tran') && !lowerCode.includes('.ac') && !lowerCode.includes('.dc ') && !lowerCode.includes('.op')) {
+      setMissingSimCmd(true)
+      return
+    }
     prepareNetlist()
   }
   const onCodeChange = (code) => {
     setNetlistCode(code)
+    const lowerCode = code.toLowerCase()
+    if (lowerCode.includes('.tran') || lowerCode.includes('.ac') || lowerCode.includes('.dc ') || lowerCode.includes('.op')) {
+      setMissingSimCmd(false)
+    }
   }
 
   const [simulateOpen, setSimulateOpen] = React.useState(false)
@@ -283,22 +292,21 @@ export default function Simulator () {
   /**
    * Builds and dispatches the cross-component event that tells ChatPanel to
    * pre-fill its input with a description of the current error.
-   * ChatPanel is always mounted below, so its listener is always registered.
    */
   const handleAskAI = () => {
     const message = 'I got this simulation error: ' + errorHelp.summary +
       (errorHelp.hints && errorHelp.hints.length > 0 ? '. Hints: ' + errorHelp.hints.join(', ') : '')
-    window.dispatchEvent(
-      new CustomEvent('esim-open-chat-with-prompt', { detail: { message } })
-    )
+    window.dispatchEvent(new CustomEvent('esim-open-chat-with-prompt', {
+      detail: { message }
+    }))
   }
 
   const handleHistoryAskAI = () => {
     const message = 'I got this simulation error: ' + historyErrorHelp.summary +
       (historyErrorHelp.hints && historyErrorHelp.hints.length > 0 ? '. Hints: ' + historyErrorHelp.hints.join(', ') : '')
-    window.dispatchEvent(
-      new CustomEvent('esim-open-chat-with-prompt', { detail: { message } })
-    )
+    window.dispatchEvent(new CustomEvent('esim-open-chat-with-prompt', {
+      detail: { message }
+    }))
   }
 
   return (
@@ -358,6 +366,31 @@ export default function Simulator () {
               label="Light Mode"
             />
 
+            {missingSimCmd && (
+              <div style={{ textAlign: 'left', marginBottom: '16px' }}>
+                <MuiAlert severity="warning">
+                  Your netlist has no simulation command. Add one of these before .end:
+                </MuiAlert>
+                <Paper style={{ padding: '8px', backgroundColor: '#2d2d2d', color: '#a6e22e', fontFamily: 'monospace', marginTop: '8px', fontSize: '14px' }}>
+                  .tran 10u 10m 0   &larr; Transient (timestep stoptime start)<br/>
+                  .ac dec 10 1 1Meg  &larr; AC analysis<br/>
+                  .dc V1 0 5 0.1    &larr; DC sweep
+                </Paper>
+                <Button 
+                  variant="outlined" 
+                  color="primary" 
+                  style={{ marginTop: '8px', borderColor: '#a6e22e', color: '#a6e22e' }}
+                  onClick={() => {
+                    const newCode = netlistCode + "\n.tran 1u 1m 0\n.control\nrun\nplot all\n.endc\n.end\n"
+                    setNetlistCode(newCode)
+                    setMissingSimCmd(false)
+                  }}
+                >
+                  Quick Add Transient
+                </Button>
+              </div>
+            )}
+
             <Editor code={netlistCode} onCodeChange={onCodeChange} dark={state} />
             <br />
 
@@ -382,10 +415,6 @@ export default function Simulator () {
         onClose={() => setHistoryOpen(false)}
         onSelectResult={handleSelectHistoryResult}
       />
-      {/* ChatPanel is always mounted so its window event listener is always
-          active. It renders as an inline card at the bottom of the page.
-          No z-index conflict: SimulationScreen uses a MUI Dialog (z-index 1300);
-          ChatPanel is a plain Card with no portal/overlay. */}
       <ChatPanel />
     </Container>
   )
