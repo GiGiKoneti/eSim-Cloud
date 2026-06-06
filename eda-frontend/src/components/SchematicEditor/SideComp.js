@@ -5,13 +5,13 @@ import {
   Button, Snackbar, IconButton
 } from '@material-ui/core'
 import { makeStyles } from '@material-ui/core/styles'
-import api from '../../utils/Api'
 import CloseIcon from '@material-ui/icons/Close'
 import StarIcon from '@material-ui/icons/Star'
 import StarBorderIcon from '@material-ui/icons/StarBorder'
 
 import './Helper/SchematicEditor.css'
 import { AddComponent } from './Helper/SideBar.js'
+import { addFavourite, removeFavourite, isFavourite } from '../../utils/favouritesStorage'
 
 const useStyles = makeStyles((theme) => ({
   popupInfo: {
@@ -46,19 +46,13 @@ const useStyles = makeStyles((theme) => ({
   }
 }))
 
-// ─── Fix #2: useRef (not createRef) so the ref is stable across re-renders ───
-// ─── Fix #7: removed dead `isFavourite` prop — isStarred() is the source of truth ───
+// ─── localStorage-backed favourites — no auth required ───────────────────────
 export default function SideComp ({ favourite, setFavourite, component }) {
   const classes = useStyles()
-  const imageRef = useRef(null)           // Fix #2: was React.createRef()
+  const imageRef = useRef(null)
 
   const [anchorEl, setAnchorEl] = React.useState(null)
-
-  // Fix #13: unified snackbar state — replaces the two-effect pattern
   const [snackbar, setSnackbar] = React.useState({ open: false, message: '' })
-
-  // Fix #3: in-flight guard prevents double-click race condition
-  const [favLoading, setFavLoading] = React.useState(false)
 
   const showSnackbar = (message) => setSnackbar({ open: true, message })
   const closeSnackbar = (_, reason) => {
@@ -78,77 +72,41 @@ export default function SideComp ({ favourite, setFavourite, component }) {
     // eslint-disable-next-line
   }, [])
 
-  // Returns true when this component is already in the user's favourites list
+  // Returns true when this component is already in the user's favourites list.
+  // Reads from localStorage via isFavourite() — works without auth.
   const isStarred = () => {
-    if (!favourite || !Array.isArray(favourite)) return false
-    return favourite.some((fav) => fav.id === component.id)
-  }
-
-  const addFavourite = (id) => {
-    if (favLoading) return                          // Fix #3: guard against double-click
-    setFavLoading(true)
-
-    const token = localStorage.getItem('esim_token')
-    const body = { component: [id] }
-    const config = { headers: { 'Content-Type': 'application/json' } }
-    if (token) config.headers.Authorization = `Token ${token}`
-
-    api.post('favouritecomponents', body, config)
-      .then((resp) => {
-        const updated = resp?.data?.component ?? [] // Fix #5: null-safe access with fallback
-        setFavourite(updated)
-        showSnackbar('Component added to favourites')
-      })
-      .catch((err) => {
-        console.error('[Favourites] add failed:', err.message || err) // Fix #6: console.error
-        showSnackbar('Failed to update favourites')
-      })
-      .finally(() => setFavLoading(false))          // Fix #3: always reset loading flag
-
-    setAnchorEl(null)
-  }
-
-  // Fix #11: simplified — uses isStarred() instead of the old var/flag loop
-  const handleFavourite = (id) => {
-    if (isStarred()) {
-      showSnackbar('This component is already added to favourites')
-      setAnchorEl(null)
-    } else {
-      addFavourite(id)
+    // Prefer the parent's in-memory state (passed as `favourite` prop) when available
+    // so the star updates immediately on toggle without waiting for a localStorage re-read.
+    if (favourite && Array.isArray(favourite)) {
+      return favourite.some((fav) => fav.id === component.id)
     }
+    return isFavourite(component.id)
   }
 
-  const handleRemove = (id) => {
-    if (favLoading) return                          // Fix #3: guard against double-click
-    setFavLoading(true)
-
-    const token = localStorage.getItem('esim_token')
-    const config = { headers: { 'Content-Type': 'application/json' } }
-    if (token) config.headers.Authorization = `Token ${token}`
-
-    api.delete(`favouritecomponents/${id}`, config)
-      .then((resp) => {
-        const updated = resp?.data?.component ?? [] // Fix #5: null-safe access with fallback
-        setFavourite(updated)
-        showSnackbar('Removed from favourites')
-      })
-      .catch((err) => {
-        console.error('[Favourites] remove failed:', err.message || err) // Fix #6: console.error
-        showSnackbar('Failed to update favourites')
-      })
-      .finally(() => setFavLoading(false))          // Fix #3: always reset loading flag
-
+  // ── localStorage-backed add ──────────────────────────────────────────────
+  const handleAddFavourite = () => {
+    const updated = addFavourite(component)
+    if (setFavourite) setFavourite(updated)
+    showSnackbar('Added to favourites')
     setAnchorEl(null)
   }
 
-  // One-click star toggle on thumbnail — bypasses the info popover
+  // ── localStorage-backed remove ───────────────────────────────────────────
+  const handleRemoveFavourite = () => {
+    const updated = removeFavourite(component.id)
+    if (setFavourite) setFavourite(updated)
+    showSnackbar('Removed from favourites')
+    setAnchorEl(null)
+  }
+
+  // One-click star toggle on thumbnail — bypasses the info popover.
+  // Works for ALL users — no token check required.
   const handleStarToggle = (e) => {
     e.stopPropagation()
-    if (!localStorage.getItem('esim_token')) return
     if (isStarred()) {
-      handleRemove(component.id)
+      handleRemoveFavourite()
     } else {
-      addFavourite(component.id)
+      handleAddFavourite()
     }
   }
 
@@ -165,30 +123,27 @@ export default function SideComp ({ favourite, setFavourite, component }) {
             alt={component.name || 'component'}
             aria-describedby={id}
             onClick={handleClick}
-            onError={(e) => { e.target.style.visibility = 'hidden' }}  // R7: hide broken images
+            onError={(e) => { e.target.style.visibility = 'hidden' }}
           />
         </Tooltip>
 
-        {/* Star icon overlay — only shown when user is logged in */}
-        {localStorage.getItem('esim_token') && (
-          <Tooltip title={isStarred() ? 'Remove from favourites' : 'Add to favourites'} arrow>
-            <IconButton
-              className={classes.starBtn}
-              size="small"
-              onClick={handleStarToggle}
-              disabled={favLoading}     // Fix #3: disabled while API call is in flight
-              aria-label={             // Fix #10: human-readable label
-                isStarred()
-                  ? `Remove ${component.name} from favourites`
-                  : `Add ${component.name} to favourites`
-              }
-            >
-              {isStarred()
-                ? <StarIcon className={classes.starIconOn} />
-                : <StarBorderIcon className={classes.starIconOff} />}
-            </IconButton>
-          </Tooltip>
-        )}
+        {/* Star icon overlay — shown for ALL users, no auth required */}
+        <Tooltip title={isStarred() ? 'Remove from favourites' : 'Add to favourites'} arrow>
+          <IconButton
+            className={classes.starBtn}
+            size="small"
+            onClick={handleStarToggle}
+            aria-label={
+              isStarred()
+                ? `Remove ${component.name} from favourites`
+                : `Add ${component.name} to favourites`
+            }
+          >
+            {isStarred()
+              ? <StarIcon className={classes.starIconOn} />
+              : <StarBorderIcon className={classes.starIconOff} />}
+          </IconButton>
+        </Tooltip>
       </div>
 
       {/* Popover — shows component details on thumbnail click */}
@@ -227,25 +182,18 @@ export default function SideComp ({ favourite, setFavourite, component }) {
             </ListItemText>
           }
 
-          {/* Show 'Add to Favourites' only when not already starred */}
-          {!isStarred() && localStorage.getItem('esim_token') &&
+          {/* Add / Remove from Favourites buttons — no auth required */}
+          {!isStarred() &&
             <ListItemText>
-              <Button
-                onClick={() => handleFavourite(component.id)}
-                disabled={favLoading}    // Fix #3: disable during in-flight request
-              >
+              <Button onClick={handleAddFavourite}>
                 Add to Favourites
               </Button>
             </ListItemText>
           }
 
-          {/* Show 'Remove from Favourites' when already starred */}
-          {isStarred() && localStorage.getItem('esim_token') &&
+          {isStarred() &&
             <ListItemText>
-              <Button
-                onClick={() => handleRemove(component.id)}
-                disabled={favLoading}    // Fix #3: disable during in-flight request
-              >
+              <Button onClick={handleRemoveFavourite}>
                 Remove from Favourites
               </Button>
             </ListItemText>
@@ -256,7 +204,7 @@ export default function SideComp ({ favourite, setFavourite, component }) {
       <Snackbar
         style={{ zIndex: 100 }}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
-        open={snackbar.open}             // Fix #13: unified snackbar state
+        open={snackbar.open}
         autoHideDuration={2000}
         onClose={closeSnackbar}
         message={snackbar.message}
@@ -272,7 +220,6 @@ export default function SideComp ({ favourite, setFavourite, component }) {
   )
 }
 
-// Fix #7: removed dead isFavourite prop from PropTypes
 SideComp.propTypes = {
   component: PropTypes.object.isRequired,
   setFavourite: PropTypes.func,

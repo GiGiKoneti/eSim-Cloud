@@ -1,3 +1,10 @@
+# OLLAMA SETUP (run on your host machine, not in Docker):
+# 1. Download Ollama from https://ollama.ai
+# 2. Run: ollama pull llama3.2
+# 3. Ollama starts automatically and listens on port 11434
+# 4. No API key needed — completely free and local
+# 5. To use a different model: set env var OLLAMA_MODEL=mistral or OLLAMA_MODEL=llama3
+
 """
 chatbotAPI/views.py
 
@@ -5,14 +12,8 @@ POST /api/chat/message/
 Request body  : { "message": "<str>", "context": { "page": "<str>" } }
 Response body : { "reply": "<str>" }
 
-The view first tries to reach the Google Gemini REST API using the key stored
-in the GEMINI_API_KEY environment variable.  If that variable is unset or the
-call fails for any reason, it falls back to a lightweight rule-based responder
-that gives useful ngspice-related answers so development works without a key.
-
-Authentication is optional (AllowAny) — anonymous users on the Simulator page
-can use the chat panel.  If a Token is present in the Authorization header it
-is accepted automatically by DRF's TokenAuthentication middleware.
+GET /api/chat/status/
+Response body : { "ollama": true/false, "gemini": true/false, "active_backend": "ollama"|"gemini"|"fallback" }
 """
 import os
 import logging
@@ -26,7 +27,7 @@ from rest_framework import status
 
 logger = logging.getLogger(__name__)
 
-# ── Gemini REST endpoint (no SDK needed, just requests) ──────────────────────
+# ── Gemini REST endpoint ─────────────────────────────────────────────────────
 _GEMINI_URL = (
     'https://generativelanguage.googleapis.com/v1beta/models/'
     'gemini-2.0-flash:generateContent'
@@ -39,27 +40,45 @@ _SYSTEM_PROMPT = (
     'steps to fix it.  Use plain text — no markdown bold or bullet symbols.'
 )
 
+def try_ollama(message: str):
+    ollama_host = os.environ.get('OLLAMA_HOST', 'host.docker.internal')
+    ollama_model = os.environ.get('OLLAMA_MODEL', 'llama3.2')
+    ollama_url = f'http://{ollama_host}:11434/api/generate'
+    full_prompt = f"You are the eSim-Cloud AI assistant helping with ngspice circuit simulation errors. The user says: {message}. Answer in 2-3 sentences with practical advice."
 
-def _call_gemini(message: str, context: dict) -> str:
-    """
-    Calls the Google Gemini API and returns the assistant reply text.
-    Raises an exception if the call fails — caller handles the fallback.
-    """
+    try:
+        resp = http_requests.post(
+            ollama_url,
+            json={
+                "model": ollama_model,
+                "prompt": full_prompt,
+                "stream": False
+            },
+            timeout=30
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        reply = data.get('response', '').strip()
+        if reply:
+            logger.info('[chatbotAPI] Ollama reply generated successfully')
+            return reply
+    except Exception as exc:
+        logger.warning('[chatbotAPI] Ollama unavailable: %s', exc)
+        return None
+    return None
+
+def try_gemini(message: str):
+    print('[ChatAPI] Calling Gemini API for user message:', message[:50])
     api_key = getattr(settings, 'GEMINI_API_KEY', '').strip()
     if not api_key:
-        raise ValueError('GEMINI_API_KEY not configured')
-
-    page = (context or {}).get('page', '')
-    user_content = message
-    if page:
-        user_content = f'[Page: {page}] {message}'
+        return None
 
     payload = {
         'system_instruction': {
             'parts': [{'text': _SYSTEM_PROMPT}]
         },
         'contents': [
-            {'role': 'user', 'parts': [{'text': user_content}]}
+            {'role': 'user', 'parts': [{'text': message}]}
         ],
         'generationConfig': {
             'temperature': 0.4,
@@ -67,28 +86,31 @@ def _call_gemini(message: str, context: dict) -> str:
         }
     }
 
-    resp = http_requests.post(
-        _GEMINI_URL,
-        params={'key': api_key},
-        json=payload,
-        timeout=15,
-    )
-    resp.raise_for_status()
-    data = resp.json()
-    # Navigate: candidates[0].content.parts[0].text
-    reply = (
-        data.get('candidates', [{}])[0]
-        .get('content', {})
-        .get('parts', [{}])[0]
-        .get('text', '')
-        .strip()
-    )
-    if not reply:
-        raise ValueError('Empty reply from Gemini')
-    return reply
+    try:
+        resp = http_requests.post(
+            _GEMINI_URL,
+            params={'key': api_key},
+            json=payload,
+            timeout=15,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        reply = (
+            data.get('candidates', [{}])[0]
+            .get('content', {})
+            .get('parts', [{}])[0]
+            .get('text', '')
+            .strip()
+        )
+        if reply:
+            logger.info('[chatbotAPI] Gemini reply generated successfully')
+            return reply
+    except Exception as exc:
+        logger.warning('[chatbotAPI] Gemini unavailable (%s)', exc)
+        return None
+    return None
 
-
-# ── Rule-based fallback (works with zero API keys) ───────────────────────────
+# ── Rule-based fallback ──────────────────────────────────────────────────────
 
 _RULES = [
     (
@@ -144,10 +166,16 @@ _RULES = [
         'for the specific ERROR: line.  Common causes: missing model files, '
         'syntax errors in .subckt definitions, or unsupported analysis types.'
     ),
+    (
+        ['component model not found', "can't find model", 'could not find a valid modelname'],
+        'The simulation failed because a component uses a model name (e.g., BC546B) that is not installed '
+        'in ngspice. You must either provide a .model or .lib definition in your netlist for this component, '
+        'or use a generic component from the DEFAULT library.'
+    ),
 ]
 
 
-def _rule_based_reply(message: str) -> str:
+def get_rule_based_reply(message: str) -> str:
     lower = message.lower()
     for keywords, reply in _RULES:
         if any(kw in lower for kw in keywords):
@@ -166,13 +194,6 @@ def _rule_based_reply(message: str) -> str:
 class ChatMessageView(APIView):
     """
     POST /api/chat/message/
-
-    Request  : { "message": "<str>", "context": { "page": "<str>" } }
-    Response : { "reply": "<str>" }
-
-    Tries Gemini first; falls back to rule-based reply on any error.
-    Returns HTTP 200 in both cases so the frontend never shows a network error
-    for expected degraded-mode operation.
     """
     permission_classes = (AllowAny,)
 
@@ -186,12 +207,48 @@ class ChatMessageView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Attempt real LLM call, fall back gracefully.
-        try:
-            reply = _call_gemini(message, context)
-            logger.info('[chatbotAPI] Gemini reply generated successfully')
-        except Exception as exc:
-            logger.warning('[chatbotAPI] Gemini unavailable (%s), using rule-based fallback', exc)
-            reply = _rule_based_reply(message)
+        page = context.get('page', '')
+        user_content = message
+        if page:
+            user_content = f'[Page: {page}] {message}'
+
+        reply = try_ollama(user_content)
+        if reply is None:
+            reply = try_gemini(user_content)
+        
+        if reply is None:
+            reply = get_rule_based_reply(message)
 
         return Response({'reply': reply}, status=status.HTTP_200_OK)
+
+
+class ChatStatusView(APIView):
+    """
+    GET /api/chat/status/
+    """
+    permission_classes = (AllowAny,)
+
+    def get(self, request, *args, **kwargs):
+        ollama_host = os.environ.get('OLLAMA_HOST', 'host.docker.internal')
+        ollama_reachable = False
+        try:
+            resp = http_requests.get(f'http://{ollama_host}:11434/api/tags', timeout=3)
+            if resp.status_code == 200:
+                ollama_reachable = True
+        except Exception:
+            pass
+        
+        api_key = getattr(settings, 'GEMINI_API_KEY', '').strip()
+        gemini_configured = bool(api_key)
+
+        active = 'fallback'
+        if ollama_reachable:
+            active = 'ollama'
+        elif gemini_configured:
+            active = 'gemini'
+
+        return Response({
+            'ollama': ollama_reachable,
+            'gemini': gemini_configured,
+            'active_backend': active
+        }, status=status.HTTP_200_OK)

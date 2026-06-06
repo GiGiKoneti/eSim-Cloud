@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import PropTypes from 'prop-types'
 import {
   List,
@@ -13,6 +13,7 @@ import {
   Switch,
   FormControlLabel
 } from '@material-ui/core'
+import MuiAlert from '@material-ui/lab/Alert'
 import { makeStyles } from '@material-ui/core/styles'
 import ExpandLess from '@material-ui/icons/ExpandLess'
 import ExpandMore from '@material-ui/icons/ExpandMore'
@@ -27,7 +28,8 @@ import { useSelector, useDispatch } from 'react-redux'
 import { useHistory } from 'react-router-dom'
 import { setNetlist } from '../../redux/actions/index'
 
-import { buildNetlistFromGraph, sanitizeNetlistForExport } from './Helper/NetlistExporter'
+import { sanitizeNetlistForExport } from './Helper/NetlistExporter'
+import { GenerateNetList } from './Helper/ToolbarTools'
 
 const useStyles = makeStyles((theme) => ({
   actions: {
@@ -56,11 +58,31 @@ export default function NetlistPreviewPanel ({ gridRef }) {
   const [isLoading, setIsLoading] = useState(false)
   const [showSpinner, setShowSpinner] = useState(false)
   const [themeState, setThemeState] = useState({ checkedA: false })
+  const [templateLoadedSnack, setTemplateLoadedSnack] = useState(false)
 
   const schSave = useSelector(state => state.saveSchematicReducer)
+  const netfile = useSelector(state => state.netlistReducer)
   const projectName = schSave.title || 'Untitled_Schematic'
   const history = useHistory()
   const dispatch = useDispatch()
+
+  const templateNetlist = useSelector(state => state.netlistReducer.netlist)
+
+  useEffect(() => {
+    if (templateNetlist) {
+      console.log('[NetlistPreviewPanel] templateNetlist changed to:', templateNetlist?.substring(0, 50))
+      setNetlistText(templateNetlist)
+      // Step 1 — Expand the panel
+      setOpen(true)
+      // Step 2 — Show success Snackbar
+      setTemplateLoadedSnack(true)
+      // Step 3 — Scroll into view after expansion animation
+      setTimeout(() => {
+        const panel = document.getElementById('netlist-preview-panel') || document.querySelector('[data-testid="netlist-preview-panel"]')
+        if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }, 200)
+    }
+  }, [templateNetlist])
 
   const handleThemeChange = (event) => {
     setThemeState({ ...themeState, [event.target.name]: event.target.checked })
@@ -80,12 +102,45 @@ export default function NetlistPreviewPanel ({ gridRef }) {
       if (!gridRef || !gridRef.current || !gridRef.current.graph) {
         setNetlistText('// Error: Graph not loaded yet.')
       } else {
-        const graph = gridRef.current.graph
         try {
-          const result = buildNetlistFromGraph(graph)
-          setNetlistText(result.main)
-          setSnackMessage('Netlist refreshed successfully!')
-          setSnackOpen(true)
+          const compNetlist = GenerateNetList()
+          if (!compNetlist) {
+            setNetlistText('// Error: ERC check failed. Netlist not generated.')
+          } else {
+            let printToPlotControlBlock = ''
+            if (netfile && netfile.controlBlock) {
+              const ctrlblk = netfile.controlBlock.split('\n')
+              for (let line = 0; line < ctrlblk.length; line++) {
+                if (ctrlblk[line].includes('print')) {
+                  printToPlotControlBlock += 'plot '
+                  let cleanCode = ctrlblk[line].split('print ')[1]
+                  cleanCode = cleanCode.split('>')[0]
+                  printToPlotControlBlock += cleanCode + '\n'
+                } else {
+                  printToPlotControlBlock += ctrlblk[line] + '\n'
+                }
+              }
+            }
+
+            const title = (netfile && netfile.title) ? netfile.title : projectName
+            const controlLine = (netfile && netfile.controlLine) ? netfile.controlLine : ''
+
+            const fullNetlist =
+              title +
+              '\n\n' +
+              compNetlist.models +
+              '\n' +
+              compNetlist.main +
+              '\n' +
+              controlLine +
+              '\n' +
+              printToPlotControlBlock +
+              '\n'
+
+            setNetlistText(fullNetlist)
+            setSnackMessage('Netlist refreshed successfully!')
+            setSnackOpen(true)
+          }
         } catch (e) {
           setNetlistText('// Error generating netlist:\n// ' + e.message)
         }
@@ -127,7 +182,11 @@ export default function NetlistPreviewPanel ({ gridRef }) {
   }
 
   const handleSendToSimulator = () => {
-    const sanitized = sanitizeNetlistForExport(netlistText)
+    let sanitized = sanitizeNetlistForExport(netlistText)
+    const lowerCode = sanitized.toLowerCase()
+    if (!lowerCode.includes('.tran') && !lowerCode.includes('.ac') && !lowerCode.includes('.dc ') && !lowerCode.includes('.op')) {
+      sanitized += "\n* -- Add your simulation command here --\n.tran 1u 1m 0\n.control\nrun\nplot all\n.endc\n.end\n"
+    }
     dispatch(setNetlist(sanitized))
     setSnackMessage('Netlist loaded in Simulator')
     setSnackOpen(true)
@@ -145,7 +204,7 @@ export default function NetlistPreviewPanel ({ gridRef }) {
 
   return (
     <>
-      <List>
+      <List id="netlist-preview-panel" data-testid="netlist-preview-panel">
         <ListItem button onClick={handleToggle} divider>
           <h2 className={classes.header}>Netlist Preview</h2>
           <Box flexGrow={1} />
@@ -235,6 +294,23 @@ export default function NetlistPreviewPanel ({ gridRef }) {
           </IconButton>
         }
       />
+
+      {/* Template-loaded success snackbar with MUI Alert */}
+      <Snackbar
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        open={templateLoadedSnack}
+        autoHideDuration={5000}
+        onClose={() => setTemplateLoadedSnack(false)}
+      >
+        <MuiAlert
+          elevation={6}
+          variant="filled"
+          severity="success"
+          onClose={() => setTemplateLoadedSnack(false)}
+        >
+          Template netlist loaded! Review it below, then click SEND TO SIMULATOR.
+        </MuiAlert>
+      </Snackbar>
     </>
   )
 }

@@ -16,6 +16,7 @@
  *   result         : object   — raw result object from the API (may be large)
  *   errorHelp      : object|null — structured error_help or null
  *   netlist        : string   — the netlist text submitted
+ *   canvasXml      : string|null — mxGraph XML snapshot at time of simulation
  * }
  */
 
@@ -51,6 +52,7 @@ export function getSimulationHistory () {
  * @param {object|null}  runData.result         — raw API result object
  * @param {object|null}  runData.errorHelp      — structured error_help or null
  * @param {string}       runData.netlist        — the netlist string submitted
+ * @param {string|null}  runData.canvasXml      — mxGraph XML snapshot at simulation time
  */
 export function saveSimulationRun (runData) {
   try {
@@ -62,7 +64,8 @@ export function saveSimulationRun (runData) {
       simulationType: runData.simulationType || 'Unknown',
       result: runData.result || null,
       errorHelp: runData.errorHelp || null,
-      netlist: runData.netlist || ''
+      netlist: runData.netlist || '',
+      canvasXml: runData.canvasXml || null
     }
     // Newest first — prepend, then cap at MAX_ENTRIES.
     const updated = [entry, ...existing].slice(0, MAX_ENTRIES)

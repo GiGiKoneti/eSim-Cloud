@@ -52,6 +52,7 @@ INSTALLED_APPS = [
     'arduinoAPI',
     'workflowAPI',
     'ltiAPI',
+    'chatbotAPI',
 ]
 
 MIDDLEWARE = [
@@ -141,6 +142,8 @@ SOCIAL_AUTH_GOOGLE_OAUTH2_KEY = os.environ.get(
 
 SOCIAL_AUTH_GOOGLE_OAUTH2_SECRET = os.environ.get(
     "SOCIAL_AUTH_GOOGLE_OAUTH2_SECRET", "")
+
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 
 GOOGLE_OAUTH_REDIRECT_URI = os.environ.get(
     "GOOGLE_OAUTH_REDIRECT_URI", "http://localhost/api/auth/google-callback")

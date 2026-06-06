@@ -25,7 +25,7 @@ import MuiAlert from '@material-ui/lab/Alert'
 import { makeStyles } from '@material-ui/core/styles'
 import { useSelector, useDispatch } from 'react-redux'
 import { setControlLine, setControlBlock, setResultTitle, setResultGraph, setResultText, setNetlist } from '../../redux/actions/index'
-import { GenerateNetList, GenerateNodeList, GenerateCompList, ErcCheckNets } from './Helper/ToolbarTools'
+import { GenerateNetList, GenerateNodeList, GenerateCompList, ErcCheckNets, Save, renderGalleryXML } from './Helper/ToolbarTools'
 import SimulationScreen from '../Shared/SimulationScreen'
 import { Multiselect } from 'multiselect-react-dropdown'
 import Notice from '../Shared/Notice'
@@ -96,44 +96,47 @@ export default function SimulationProperties (props) {
   // This is separate from errorHelp (live simulation) so that Task 4 can
   // reuse ErrorExplainerCard without duplicating its logic.
   const [historyErrorHelp, setHistoryErrorHelp] = useState(null)
+  // historySuccessMsg is shown in the result area when a green (success)
+  // history entry is clicked but waveform data is not stored in history.
+  const [historySuccessMsg, setHistorySuccessMsg] = useState(null)
   const [dcSweepcontrolLine, setDcSweepControlLine] = useState(props.dcSweepcontrolLine ? props.dcSweepcontrolLine : {
-    parameter: '',
-    sweepType: 'Linear',
-    start: '',
-    stop: '',
-    step: '',
-    parameter2: '',
-    start2: '',
-    stop2: '',
-    step2: ''
+    parameter: localStorage.getItem('esim_dc_param') || '',
+    sweepType: localStorage.getItem('esim_dc_sweepType') || 'Linear',
+    start: localStorage.getItem('esim_dc_start') || '',
+    stop: localStorage.getItem('esim_dc_stop') || '',
+    step: localStorage.getItem('esim_dc_step') || '',
+    parameter2: localStorage.getItem('esim_dc_param2') || '',
+    start2: localStorage.getItem('esim_dc_start2') || '',
+    stop2: localStorage.getItem('esim_dc_stop2') || '',
+    step2: localStorage.getItem('esim_dc_step2') || ''
   })
   const [transientAnalysisControlLine, setTransientAnalysisControlLine] = useState(props.transientAnalysisControlLine ? props.transientAnalysisControlLine : {
-    start: '0',
-    stop: '',
-    step: '',
+    start: localStorage.getItem('esim_transient_start') || '0',
+    stop: localStorage.getItem('esim_transient_stop') || '',
+    step: localStorage.getItem('esim_transient_step') || '',
     skipInitial: false
   })
 
   const [acAnalysisControlLine, setAcAnalysisControlLine] = useState(props.acAnalysisControlLine ? props.acAnalysisControlLine : {
-    input: 'dec',
-    start: '',
-    stop: '',
-    pointsBydecade: ''
+    input: localStorage.getItem('esim_ac_input') || 'dec',
+    start: localStorage.getItem('esim_ac_start') || '',
+    stop: localStorage.getItem('esim_ac_stop') || '',
+    pointsBydecade: localStorage.getItem('esim_ac_points') || ''
   })
 
   const [tfAnalysisControlLine, setTfAnalysisControlLine] = useState(props.tfAnalysisControlLine ? props.tfAnalysisControlLine : {
-    outputNodes: false,
-    outputVoltageSource: '',
-    inputVoltageSource: ''
+    outputNodes: localStorage.getItem('esim_tf_outputNodes') === 'true',
+    outputVoltageSource: localStorage.getItem('esim_tf_outputSource') || '',
+    inputVoltageSource: localStorage.getItem('esim_tf_inputSource') || ''
   })
 
   const [NoiseAnalysisControlLine, setNoiseAnalysisControlLine] = useState(props.NoiseAnalysisControlLine ? props.NoiseAnalysisControlLine : {
-    inputVoltageSource: '',
-    input: 'dec',
-    start: '',
-    stop: '',
-    pointsBydecade: '',
-    outputSpectrum: false
+    inputVoltageSource: localStorage.getItem('esim_noise_inputSource') || '',
+    input: localStorage.getItem('esim_noise_input') || 'dec',
+    start: localStorage.getItem('esim_noise_start') || '',
+    stop: localStorage.getItem('esim_noise_stop') || '',
+    pointsBydecade: localStorage.getItem('esim_noise_points') || '',
+    outputSpectrum: localStorage.getItem('esim_noise_outputSpec') === 'true'
   })
 
   const [controlBlockParam, setControlBlockParam] = useState('')
@@ -164,19 +167,35 @@ export default function SimulationProperties (props) {
 
   const handleDcSweepControlLine = (evt) => {
     const value = evt.target.value
+    const id = evt.target.id
+
+    if (id === 'parameter') localStorage.setItem('esim_dc_param', value)
+    if (id === 'sweepType') localStorage.setItem('esim_dc_sweepType', value)
+    if (id === 'start') localStorage.setItem('esim_dc_start', value)
+    if (id === 'stop') localStorage.setItem('esim_dc_stop', value)
+    if (id === 'step') localStorage.setItem('esim_dc_step', value)
+    if (id === 'parameter2') localStorage.setItem('esim_dc_param2', value)
+    if (id === 'start2') localStorage.setItem('esim_dc_start2', value)
+    if (id === 'stop2') localStorage.setItem('esim_dc_stop2', value)
+    if (id === 'step2') localStorage.setItem('esim_dc_step2', value)
 
     setDcSweepControlLine({
       ...dcSweepcontrolLine,
-      [evt.target.id]: value
+      [id]: value
     })
   }
 
   const handleTransientAnalysisControlLine = (evt) => {
     const value = evt.target.value
+    const id = evt.target.id
+
+    if (id === 'start') localStorage.setItem('esim_transient_start', value)
+    if (id === 'stop') localStorage.setItem('esim_transient_stop', value)
+    if (id === 'step') localStorage.setItem('esim_transient_step', value)
 
     setTransientAnalysisControlLine({
       ...transientAnalysisControlLine,
-      [evt.target.id]: value
+      [id]: value
     })
   }
   const handleTransientAnalysisControlLineUIC = (evt) => {
@@ -190,32 +209,49 @@ export default function SimulationProperties (props) {
 
   const handleAcAnalysisControlLine = (evt) => {
     const value = evt.target.value
+    const id = evt.target.id
+
+    if (id === 'input') localStorage.setItem('esim_ac_input', value)
+    if (id === 'start') localStorage.setItem('esim_ac_start', value)
+    if (id === 'stop') localStorage.setItem('esim_ac_stop', value)
+    if (id === 'pointsBydecade') localStorage.setItem('esim_ac_points', value)
 
     setAcAnalysisControlLine({
       ...acAnalysisControlLine,
-      [evt.target.id]: value
+      [id]: value
     })
   }
 
   const handleTfAnalysisControlLine = (evt) => {
     const value = evt.target.value
+    const id = evt.target.id
+    if (id === 'outputVoltageSource') localStorage.setItem('esim_tf_outputSource', value)
+    if (id === 'inputVoltageSource') localStorage.setItem('esim_tf_inputSource', value)
     setTfAnalysisControlLine({
       ...tfAnalysisControlLine,
-      [evt.target.id]: value
+      [id]: value
     })
   }
   const handleTfAnalysisControlLineNodes = (evt) => {
     const value = evt.target.checked
+    const id = evt.target.id
+    if (id === 'outputNodes') localStorage.setItem('esim_tf_outputNodes', value ? 'true' : 'false')
     setTfAnalysisControlLine({
       ...tfAnalysisControlLine,
-      [evt.target.id]: value
+      [id]: value
     })
   }
   const handleNoiseAnalysisControlLine = (evt) => {
     const value = evt.target.value
+    const id = evt.target.id
+    if (id === 'inputVoltageSource') localStorage.setItem('esim_noise_inputSource', value)
+    if (id === 'input') localStorage.setItem('esim_noise_input', value)
+    if (id === 'start') localStorage.setItem('esim_noise_start', value)
+    if (id === 'stop') localStorage.setItem('esim_noise_stop', value)
+    if (id === 'pointsBydecade') localStorage.setItem('esim_noise_points', value)
     setNoiseAnalysisControlLine({
       ...NoiseAnalysisControlLine,
-      [evt.target.id]: value
+      [id]: value
     })
   }
 
@@ -468,7 +504,7 @@ export default function SimulationProperties (props) {
           console.log('failed notif')
           console.log(res.data.details)
           msg = res.data.details.fail.replace("b'", '')
-          isError = true
+          isError = true 
           // Populate structured error help when the backend parser has provided it.
           // Path: res.data.details.error_help (set by ngspice_helper.py via error_parser.py)
           if (res.data?.details?.error_help) {
@@ -476,6 +512,9 @@ export default function SimulationProperties (props) {
           } else {
             setErrorHelp(null)
           }
+          // Bug 3 Part A: capture canvas XML at the moment of simulation failure.
+          let canvasXmlOnFail = null
+          try { canvasXmlOnFail = Save() } catch (e) { console.warn('[History] Could not capture canvas XML:', e) }
           // Task 2: save failed run to localStorage history (no auth required).
           saveSimulationRun({
             timestamp: new Date().toISOString(),
@@ -483,7 +522,8 @@ export default function SimulationProperties (props) {
             simulationType: typeSimulation,
             result: res.data?.details,
             errorHelp: res.data?.details?.error_help || null,
-            netlist: netfile.netlist || ''
+            netlist: netfile.netlist || '',
+            canvasXml: canvasXmlOnFail
           })
         } else {
           const result = res.data.details
@@ -561,6 +601,9 @@ export default function SimulationProperties (props) {
           handlesimulateOpen()
           // Clear any previous error help on success.
           setErrorHelp(null)
+          // Bug 3 Part A: capture canvas XML at the moment of successful simulation.
+          let canvasXmlOnSuccess = null
+          try { canvasXmlOnSuccess = Save() } catch (e) { console.warn('[History] Could not capture canvas XML:', e) }
           // Task 2: save successful run to localStorage history.
           saveSimulationRun({
             timestamp: new Date().toISOString(),
@@ -568,7 +611,8 @@ export default function SimulationProperties (props) {
             simulationType: typeSimulation,
             result: null,
             errorHelp: null,
-            netlist: netfile.netlist || ''
+            netlist: netfile.netlist || '',
+            canvasXml: canvasXmlOnSuccess
           })
         } else if (resPending === false) {
           handleStatus(stats.error)
@@ -619,7 +663,7 @@ export default function SimulationProperties (props) {
           break
         case 'Transient':
           // console.log(transientAnalysisControlLine)
-          if (transientAnalysisControlLine.step !== '' && transientAnalysisControlLine.start !== '' && transientAnalysisControlLine.start !== '') {
+          if (transientAnalysisControlLine.step !== '' && transientAnalysisControlLine.start !== '' && transientAnalysisControlLine.stop !== '') {
             typeSimulation = 'Transient'
             if (transientAnalysisControlLine.skipInitial === true) uic = 'UIC'
             controlLine = `.tran ${transientAnalysisControlLine.step} ${transientAnalysisControlLine.stop} ${transientAnalysisControlLine.start} ${uic}`
@@ -752,21 +796,38 @@ export default function SimulationProperties (props) {
 
   /**
    * Called when the user clicks a row in SimulationHistoryDrawer.
-   * Restores the historical result into the existing display channels:
-   *   - If the historical result has error_help → show ErrorExplainerCard
-   *     (historyErrorHelp state, Task 4 requirement).
-   *   - The raw result object is available via item.result if needed for
-   *     graph/text display in future iterations (not wired here to avoid
-   *     breaking the current simulate-and-show flow).
+   * Bug 2 fix: always render something — either ErrorExplainerCard (failed) or
+   * a "waveform not available" message (success).
+   * Bug 3 fix: restore the canvas XML that was captured at simulation time.
    */
   const handleSelectHistoryResult = (item) => {
-    // Clear any live-simulation error first to avoid stale cards.
+    // Clear any live-simulation error / success state first.
     setErrorHelp(null)
-    // item.errorHelp is the localStorage-stored errorHelp field (Task 3 entry shape).
+    setHistorySuccessMsg(null)
+
+    // ── Bug 2 fix: set appropriate result state ─────────────────────────────
     if (item && item.errorHelp) {
+      // Failed run with structured error help → show ErrorExplainerCard
       setHistoryErrorHelp(item.errorHelp)
-    } else {
+    } else if (item && !item.success) {
+      // Failed run without structured errorHelp — clear history card
       setHistoryErrorHelp(null)
+    } else {
+      // Successful run — waveform data is not stored in history.
+      // Show a clear message in the result area instead of a blank screen.
+      setHistoryErrorHelp(null)
+      setHistorySuccessMsg(
+        'This simulation ran successfully. The full waveform output is not available in history — run the simulation again to see the graph.'
+      )
+    }
+
+    // ── Bug 3 Part B: restore the canvas XML ───────────────────────────────
+    if (item && item.canvasXml && typeof item.canvasXml === 'string' && item.canvasXml.length > 0) {
+      try {
+        renderGalleryXML(item.canvasXml)
+      } catch (e) {
+        console.error('[History] Failed to restore canvas XML:', e)
+      }
     }
   }
 
@@ -845,24 +906,20 @@ export default function SimulationProperties (props) {
             }}
           />
         )}
-        {/* History button + drawer — localStorage only, no auth required. */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '4px 8px' }}>
-          <Button
-            id="sim-history-open-btn"
-            variant="outlined"
-            color="default"
-            size="small"
-            startIcon={<HistoryIcon />}
-            onClick={() => setHistoryOpen(true)}
-          >
-            History
-          </Button>
-        </div>
-        <SimulationHistoryDrawer
-          open={historyOpen}
-          onClose={() => setHistoryOpen(false)}
-          onSelectResult={handleSelectHistoryResult}
-        />
+        {/* Bug 2 fix: show "success, waveform not available" message for green entries */}
+        {historySuccessMsg && (
+          <div style={{
+            margin: '8px',
+            padding: '12px',
+            backgroundColor: '#e8f5e9',
+            border: '1px solid #a5d6a7',
+            borderRadius: 4
+          }}>
+            <Typography variant="body2" style={{ color: '#2e7d32' }}>
+              ✅ {historySuccessMsg}
+            </Typography>
+          </div>
+        )}
         {/* Simulation modes list */}
         <List>
           {/* DC Solver */}
