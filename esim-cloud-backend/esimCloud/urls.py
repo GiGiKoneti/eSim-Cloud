@@ -34,6 +34,9 @@ schema_view = get_schema_view(
 urlpatterns = [
     path('api/admin/', admin.site.urls),
 
+    # Chatbot API Routes
+    path('api/chat/', include(chatbotURLs)),
+
     # Simulation API Routes
     path('api/simulation/', include(simulationURLs)),
 

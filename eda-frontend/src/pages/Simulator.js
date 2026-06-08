@@ -41,9 +41,9 @@ export default function Simulator () {
   // errorHelp holds the structured error_help object from the backend parser,
   // or null when no structured help is available (backward-compatibility).
   const [errorHelp, setErrorHelp] = useState(null)
-  
+
   const [missingSimCmd, setMissingSimCmd] = useState(false)
-  
+
   // History drawer state
   const [historyOpen, setHistoryOpen] = useState(false)
   const [historyErrorHelp, setHistoryErrorHelp] = useState(null)
@@ -376,12 +376,12 @@ export default function Simulator () {
                   .ac dec 10 1 1Meg  &larr; AC analysis<br/>
                   .dc V1 0 5 0.1    &larr; DC sweep
                 </Paper>
-                <Button 
-                  variant="outlined" 
-                  color="primary" 
+                <Button
+                  variant="outlined"
+                  color="primary"
                   style={{ marginTop: '8px', borderColor: '#a6e22e', color: '#a6e22e' }}
                   onClick={() => {
-                    const newCode = netlistCode + "\n.tran 1u 1m 0\n.control\nrun\nplot all\n.endc\n.end\n"
+                    const newCode = netlistCode + '\n.tran 1u 1m 0\n.control\nrun\nplot all\n.endc\n.end\n'
                     setNetlistCode(newCode)
                     setMissingSimCmd(false)
                   }}

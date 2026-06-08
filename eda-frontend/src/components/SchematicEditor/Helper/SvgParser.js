@@ -15,6 +15,30 @@ let width, height, symbolName
 // we need to divide the svg width and height by the same number in order to maintain the aspect ratio.
 const default_scale = 5
 
+// --- SVG Data Cache ---
+// Caches parsed SVG metadata (dimensions, pin data) keyed by svg_path.
+// First drag of a component fetches from network; all subsequent drags are instant.
+const svgCache = {}
+
+/**
+ * Pre-fetch and cache the SVG metadata for a component.
+ * Call this on hover/mount so the data is ready before the user clicks.
+ */
+export function prefetchSvg (component) {
+  if (!component || !component.svg_path) return
+  var path = '../' + component.svg_path
+  if (svgCache[path]) return // already cached
+
+  fetch(path)
+    .then(function (response) { return response.text() })
+    .then(function (text) {
+      const parser = new DOMParser()
+      const xml = parser.parseFromString(text, 'text/xml')
+      svgCache[path] = extractData(xml)
+    })
+    .catch(function () { /* silently ignore prefetch failures */ })
+}
+
 function extractData (xml) {
   // extracting metadata from the svg file.
 
@@ -64,137 +88,142 @@ export function getSvgMetadata (graph, parent, evt, target, x, y, component, rot
 
   var path = '../' + component.svg_path
 
-  return fetch(path)
-    .then(function (response) {
-      return response.text()
-    })
-    .then(function (data) {
-      const parser = new DOMParser()
-      const xml = parser.parseFromString(data, 'text/xml')
-      // console.log(xmlDoc);
-      data = extractData(xml)
-      // console.log(data)
-      return data
-    }).then(function (data) {
-      const pins = []
-      width = data.width
-      height = data.height
-      pinData = data.pinData
+  // Use cached data if available, otherwise fetch and cache
+  var dataPromise
+  if (svgCache[path]) {
+    dataPromise = Promise.resolve(svgCache[path])
+  } else {
+    dataPromise = fetch(path)
+      .then(function (response) { return response.text() })
+      .then(function (text) {
+        const parser = new DOMParser()
+        const xml = parser.parseFromString(text, 'text/xml')
+        var parsed = extractData(xml)
+        svgCache[path] = parsed
+        return parsed
+      })
+  }
 
-      // console.log(pinData)
+  return dataPromise.then(function (data) {
+    const pins = []
+    width = data.width
+    height = data.height
+    pinData = data.pinData
 
-      // Disables moving of vertex labels
-      graph.vertexLabelsMovable = false
+    // console.log(pinData)
 
-      // Creates a style with an indicator
-      var style = graph.getStylesheet().getDefaultVertexStyle()
+    // Disables moving of vertex labels
+    graph.vertexLabelsMovable = false
 
-      style[mxConstants.STYLE_SHAPE] = 'label'
-      style[mxConstants.STYLE_VERTICAL_ALIGN] = 'bottom'
-      // style[mxConstants.STYLE_INDICATOR_SHAPE] = 'ellipse'
-      // style[mxConstants.STYLE_INDICATOR_WIDTH] = 34
-      // style[mxConstants.STYLE_INDICATOR_HEIGHT] = 34
-      style[mxConstants.STYLE_IMAGE_VERTICAL_ALIGN] = 'bottom' // indicator v-alignment
-      style[mxConstants.STYLE_IMAGE_ALIGN] = 'bottom'
-      style[mxConstants.STYLE_INDICATOR_COLOR] = 'green'
-      style[mxConstants.STYLE_FONTCOLOR] = 'red'
-      style[mxConstants.STYLE_FONTSIZE] = '10'
-      delete style[mxConstants.STYLE_STROKECOLOR] // transparent
-      // delete style[mxConstants.STYLE_FILLCOLOR] // transparent
+    // Creates a style with an indicator
+    var style = graph.getStylesheet().getDefaultVertexStyle()
 
-      // make the component images larger by reducing the denominator and smaller by increasing the denominator
-      width = width / default_scale
-      height = height / default_scale
+    style[mxConstants.STYLE_SHAPE] = 'label'
+    style[mxConstants.STYLE_VERTICAL_ALIGN] = 'bottom'
+    // style[mxConstants.STYLE_INDICATOR_SHAPE] = 'ellipse'
+    // style[mxConstants.STYLE_INDICATOR_WIDTH] = 34
+    // style[mxConstants.STYLE_INDICATOR_HEIGHT] = 34
+    style[mxConstants.STYLE_IMAGE_VERTICAL_ALIGN] = 'bottom' // indicator v-alignment
+    style[mxConstants.STYLE_IMAGE_ALIGN] = 'bottom'
+    style[mxConstants.STYLE_INDICATOR_COLOR] = 'green'
+    style[mxConstants.STYLE_FONTCOLOR] = 'red'
+    style[mxConstants.STYLE_FONTSIZE] = '10'
+    delete style[mxConstants.STYLE_STROKECOLOR] // transparent
+    // delete style[mxConstants.STYLE_FILLCOLOR] // transparent
 
-      if (centerCoords) {
-        if (rotation !== 0 && (rotation / 90) % 2 !== 0) {
-          x = x - height / 2
-          y = y - width / 2
-        } else {
-          x = x - width / 2
-          y = y - height / 2
-        }
+    // make the component images larger by reducing the denominator and smaller by increasing the denominator
+    width = width / default_scale
+    height = height / default_scale
+
+    if (centerCoords) {
+      if (rotation !== 0 && (rotation / 90) % 2 !== 0) {
+        x = x - height / 2
+        y = y - width / 2
+      } else {
+        x = x - width / 2
+        y = y - height / 2
       }
+    }
 
-      const v1 = graph.insertVertex(
-        parent,
-        null,
-        component.name,
-        x,
-        y,
-        width,
-        height,
-        'shape=image;fontColor=blue;image=' + path + ';imageVerticalAlign=bottom;verticalAlign=bottom;imageAlign=bottom;align=bottom;spacingLeft=25;'
-      )
-      v1.Component = true
-      /* var newsource = path
+    const v1 = graph.insertVertex(
+      parent,
+      null,
+      component.name,
+      x,
+      y,
+      width,
+      height,
+      'shape=image;fontColor=blue;image=' + path + ';imageVerticalAlign=bottom;verticalAlign=bottom;imageAlign=bottom;align=bottom;spacingLeft=25;'
+    )
+    v1.Component = true
+    /* var newsource = path
       var prefix = newsource.split('/')
       var symboltype = prefix[3].split('') */
-      v1.CellType = 'Component'
-      v1.symbol = component.symbol_prefix.toUpperCase()
-      v1.CompObject = component
+    v1.CellType = 'Component'
+    v1.symbol = component.symbol_prefix.toUpperCase()
+    v1.CompObject = component
 
-      component.name = component.name.toUpperCase()
-      var props = {}
-      if (v1.symbol === 'V') {
-        // console.log('voltage')
+    component.name = component.name.toUpperCase()
+    var props = {}
+    if (v1.symbol === 'V') {
+      // console.log('voltage')
 
-        if (ComponentParameters[v1.symbol][component.name] === undefined) {
-          props = Object.assign({}, ComponentParameters[v1.symbol].VSOURCE)
-        } else {
-          props = Object.assign({}, ComponentParameters[v1.symbol][component.name])
-        }
-      } else if (v1.symbol === 'I') {
-        // console.log('CURRENT')
-        if (ComponentParameters[v1.symbol][component.name] === undefined) {
-          props = Object.assign({}, ComponentParameters[v1.symbol].ISOURCE)
-        } else {
-          props = Object.assign({}, ComponentParameters[v1.symbol][component.name])
-        }
+      if (ComponentParameters[v1.symbol][component.name] === undefined) {
+        props = Object.assign({}, ComponentParameters[v1.symbol].VSOURCE)
       } else {
-        // console.log('other')
-
-        props = Object.assign({}, ComponentParameters[v1.symbol])
+        props = Object.assign({}, ComponentParameters[v1.symbol][component.name])
       }
-      props.NAME = component.name
-      v1.properties = props
-      // console.log('component', component)
-      // console.log('v1.properties', v1.properties)
-
-      v1.setConnectable(false)
-      let i = 0
-      for (i = 0; i < pinData.length; i++) {
-        currentPin = pinData[i]
-        if (currentPin.pinName === 'NC') continue
-        // move this to another file
-        x_pos = (parseInt(width) / 2 + parseInt(currentPin.pinX) / default_scale)
-        y_pos = (parseInt(height) / 2 - parseInt(currentPin.pinY) / default_scale) - 1
-
-        // move this to another file
-        // eslint-disable-next-line
-
-        if (currentPin.pinOrientation === 'L') {
-          pins[i] = graph.insertVertex(v1, null, currentPin.pinNumber, x_pos, y_pos, 0.5, 0.5, 'align=right;verticalAlign=bottom;rotation=0')
-        } else if (currentPin.pinOrientation === 'R') {
-          pins[i] = graph.insertVertex(v1, null, currentPin.pinNumber, x_pos, y_pos, 0.5, 0.5, 'align=left;verticalAlign=bottom;rotation=0')
-        } else if (currentPin.pinOrientation === 'U') {
-          pins[i] = graph.insertVertex(v1, null, currentPin.pinNumber, x_pos, y_pos, 0.5, 0.5, 'align=right;verticalAlign=bottom;rotation=0')
-        } else {
-          pins[i] = graph.insertVertex(v1, null, currentPin.pinNumber, x_pos, y_pos, 0.5, 0.5, 'align=right;verticalAlign=up;rotation=0')
-        }
-        pins[i].geometry.relative = false
-        pins[i].Pin = true
-        if (currentPin.type === 'I') {
-          pins[i].pinType = 'Input'
-        } else {
-          pins[i].pinType = 'Output'
-        }
-        // pins[i].pinType = currentPin['type']
-        pins[i].ParentComponent = v1
-        pins[i].PinNumber = currentPin.pinNumber
+    } else if (v1.symbol === 'I') {
+      // console.log('CURRENT')
+      if (ComponentParameters[v1.symbol][component.name] === undefined) {
+        props = Object.assign({}, ComponentParameters[v1.symbol].ISOURCE)
+      } else {
+        props = Object.assign({}, ComponentParameters[v1.symbol][component.name])
       }
-      if (rotation !== 0) { rotateCell(v1, rotation) }
+    } else {
+      // console.log('other')
 
-      return v1
-    })
+      props = Object.assign({}, ComponentParameters[v1.symbol])
+    }
+    props.NAME = component.name
+    v1.properties = props
+    // console.log('component', component)
+    // console.log('v1.properties', v1.properties)
+
+    v1.setConnectable(false)
+    let i = 0
+    for (i = 0; i < pinData.length; i++) {
+      currentPin = pinData[i]
+      if (currentPin.pinName === 'NC') continue
+      // move this to another file
+      x_pos = (parseInt(width) / 2 + parseInt(currentPin.pinX) / default_scale)
+      y_pos = (parseInt(height) / 2 - parseInt(currentPin.pinY) / default_scale) - 1
+
+      // move this to another file
+      // eslint-disable-next-line
+
+      if (currentPin.pinOrientation === 'L') {
+        pins[i] = graph.insertVertex(v1, null, currentPin.pinNumber, x_pos, y_pos, 0.5, 0.5, 'align=right;verticalAlign=bottom;rotation=0')
+      } else if (currentPin.pinOrientation === 'R') {
+        pins[i] = graph.insertVertex(v1, null, currentPin.pinNumber, x_pos, y_pos, 0.5, 0.5, 'align=left;verticalAlign=bottom;rotation=0')
+      } else if (currentPin.pinOrientation === 'U') {
+        pins[i] = graph.insertVertex(v1, null, currentPin.pinNumber, x_pos, y_pos, 0.5, 0.5, 'align=right;verticalAlign=bottom;rotation=0')
+      } else {
+        pins[i] = graph.insertVertex(v1, null, currentPin.pinNumber, x_pos, y_pos, 0.5, 0.5, 'align=right;verticalAlign=up;rotation=0')
+      }
+      pins[i].geometry.relative = false
+      pins[i].Pin = true
+      if (currentPin.type === 'I') {
+        pins[i].pinType = 'Input'
+      } else {
+        pins[i].pinType = 'Output'
+      }
+      // pins[i].pinType = currentPin['type']
+      pins[i].ParentComponent = v1
+      pins[i].PinNumber = currentPin.pinNumber
+    }
+    if (rotation !== 0) { rotateCell(v1, rotation) }
+
+    return v1
+  })
 }

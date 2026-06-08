@@ -151,6 +151,9 @@ GOOGLE_OAUTH_REDIRECT_URI = os.environ.get(
 POST_ACTIVATE_REDIRECT_URL = os.environ.get(
     "POST_ACTIVATE_REDIRECT_URL", "http://localhost/")
 
+# AI Assistant API Key
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+
 DJOSER = {
     'SEND_ACTIVATION_EMAIL': True,
     'PASSWORD_RESET_CONFIRM_URL': 'eda/#/password/reset/confirm/{uid}/{token}',

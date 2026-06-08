@@ -24,13 +24,14 @@ import HistoryIcon from '@material-ui/icons/History'
 import MuiAlert from '@material-ui/lab/Alert'
 import { makeStyles } from '@material-ui/core/styles'
 import { useSelector, useDispatch } from 'react-redux'
-import { setControlLine, setControlBlock, setResultTitle, setResultGraph, setResultText, setNetlist } from '../../redux/actions/index'
+import { setControlLine, setControlBlock, setResultTitle, setResultGraph, setResultText, setNetlist, toggleSimulate } from '../../redux/actions/index'
 import { GenerateNetList, GenerateNodeList, GenerateCompList, ErcCheckNets, Save, renderGalleryXML } from './Helper/ToolbarTools'
 import SimulationScreen from '../Shared/SimulationScreen'
 import { Multiselect } from 'multiselect-react-dropdown'
 import Notice from '../Shared/Notice'
 import ErrorExplainerCard from '../Simulator/ErrorExplainerCard'
 import SimulationHistoryDrawer from '../Simulator/SimulationHistoryDrawer'
+import ChatPanel from '../AIAssistant/ChatPanel'
 import api from '../../utils/Api'
 import { saveSimulationRun } from '../../utils/simulationHistory'
 
@@ -59,7 +60,15 @@ function Alert (props) {
   return <MuiAlert elevation={6} variant="filled" {...props} />
 }
 export default function SimulationProperties (props) {
+  const {
+    setSimulateOpen,
+    setIsResult,
+    setTaskId: propSetTaskId,
+    setSimType
+  } = props
+
   const netfile = useSelector(state => state.netlistReducer)
+  const isSimulate = useSelector(state => state.schematicEditorReducer.isSimulate)
   const isSimRes = useSelector(state => state.simulationReducer.isSimRes)
 
   // saveSchematicReducer.details is populated by SET_SCH_SAVED after a save.
@@ -74,7 +83,14 @@ export default function SimulationProperties (props) {
   const historyVersion = (schSave.details && schSave.details.version) ? schSave.details.version : null
   const historyBranch = (schSave.details && schSave.details.branch) ? schSave.details.branch : null
 
-  const [taskId, setTaskId] = useState(null)
+  const [localTaskId, setLocalTaskId] = useState(null)
+  const setTaskId = (val) => {
+    setLocalTaskId(val)
+    if (propSetTaskId) {
+      propSetTaskId(val)
+    }
+  }
+  const taskId = localTaskId
   const dispatch = useDispatch()
   const classes = useStyles()
   const [nodeList, setNodeList] = useState([])
@@ -140,7 +156,6 @@ export default function SimulationProperties (props) {
   })
 
   const [controlBlockParam, setControlBlockParam] = useState('')
-  const [simType, setSimType] = React.useState('')
   let typeSimulation = ''
 
   const handleControlBlockParam = (evt) => {
@@ -255,7 +270,6 @@ export default function SimulationProperties (props) {
     })
   }
 
-  const [simulateOpen, setSimulateOpen] = React.useState(false)
   const handlesimulateOpen = () => {
     setSimulateOpen(true)
   }
@@ -485,8 +499,6 @@ export default function SimulationProperties (props) {
     return api.post('simulation/upload', formData, config)
   }
 
-  const [isResult, setIsResult] = useState(false)
-
   // Get the simulation result with task_Id
   function simulationResult (url) {
     let isError = false
@@ -504,7 +516,7 @@ export default function SimulationProperties (props) {
           console.log('failed notif')
           console.log(res.data.details)
           msg = res.data.details.fail.replace("b'", '')
-          isError = true 
+          isError = true
           // Populate structured error help when the backend parser has provided it.
           // Path: res.data.details.error_help (set by ngspice_helper.py via error_parser.py)
           if (res.data?.details?.error_help) {
@@ -836,7 +848,8 @@ export default function SimulationProperties (props) {
 
   return (
     <>
-      <div className={classes.SimulationOptions}>
+      <div className={classes.toolbar} />
+      <div className={classes.simulationOptions}>
         <Snackbar
           open={needParameters}
           autoHideDuration={6000}
@@ -864,7 +877,6 @@ export default function SimulationProperties (props) {
             Cannot simulate an incomplete circuit!
           </Alert>
         </Snackbar>
-        <SimulationScreen open={simulateOpen} isResult={isResult} close={handleSimulateClose} taskId={taskId} simType={simType} />
         <Notice status={status} open={err} msg={errMsg} close={handleErrClose} />
         {/* ErrorExplainerCard for LIVE simulation errors (morning session, Task 4 source A). */}
         {errorHelp && (
@@ -906,6 +918,24 @@ export default function SimulationProperties (props) {
             }}
           />
         )}
+        {/* History button + drawer — localStorage only, no auth required. */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '4px 8px', marginTop: '20px' }}>
+          <Button
+            id="sim-history-open-btn"
+            variant="outlined"
+            color="default"
+            size="small"
+            startIcon={<HistoryIcon />}
+            onClick={() => setHistoryOpen(true)}
+          >
+            History
+          </Button>
+        </div>
+        <SimulationHistoryDrawer
+          open={historyOpen}
+          onClose={() => setHistoryOpen(false)}
+          onSelectResult={handleSelectHistoryResult}
+        />
         {/* Bug 2 fix: show "success, waveform not available" message for green entries */}
         {historySuccessMsg && (
           <div style={{
@@ -1203,17 +1233,17 @@ export default function SimulationProperties (props) {
                       <span style={{ marginLeft: '10px' }}>S</span>
                     </ListItem>
                     <ListItem>
-                      <TextField id="stop" label="Stop Time" size='small' variant="outlined"
-                        value={transientAnalysisControlLine.stop}
-                        error={!transientAnalysisControlLine.stop}
+                      <TextField id="step" label="Step Time" size='small' variant="outlined"
+                        value={transientAnalysisControlLine.step}
+                        error={!transientAnalysisControlLine.step}
                         onChange={handleTransientAnalysisControlLine}
                       />
                       <span style={{ marginLeft: '10px' }}>S</span>
                     </ListItem>
                     <ListItem>
-                      <TextField id="step" label="Time Step" size='small' variant="outlined"
-                        value={transientAnalysisControlLine.step}
-                        error={!transientAnalysisControlLine.step}
+                      <TextField id="stop" label="Stop Time" size='small' variant="outlined"
+                        value={transientAnalysisControlLine.stop}
+                        error={!transientAnalysisControlLine.stop}
                         onChange={handleTransientAnalysisControlLine}
                       />
                       <span style={{ marginLeft: '10px' }}>S</span>
@@ -1753,22 +1783,6 @@ export default function SimulationProperties (props) {
             </Button>
           </ListItem>
 
-          {/* History button — placed after Simulation Result to stay out of the
-              way of the normal simulate flow. Does NOT affect the Simulate
-              button or any existing simulation logic. */}
-          <ListItem>
-            <Button
-              id="sim-history-open-btn"
-              size="small"
-              variant="outlined"
-              color="default"
-              startIcon={<HistoryIcon />}
-              style={{ margin: '4px auto' }}
-              onClick={() => setHistoryOpen(true)}
-            >
-              History
-            </Button>
-          </ListItem>
         </List>
 
         {/* SimulationHistoryDrawer — mounted here so it is always available.
@@ -1783,6 +1797,13 @@ export default function SimulationProperties (props) {
           branch={historyBranch}
           onSelectResult={handleSelectHistoryResult}
         />
+
+        {/* AI Chat Panel — embedded inline so it receives the esim-open-chat-with-prompt
+            event fired by the ErrorExplainerCard's "Ask AI About This Error" button.
+            Placed below all simulation controls for natural reading flow. */}
+        <div style={{ padding: '8px 4px 4px' }}>
+          <ChatPanel />
+        </div>
       </div>
     </>
   )

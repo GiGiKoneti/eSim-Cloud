@@ -185,7 +185,7 @@ export default function NetlistPreviewPanel ({ gridRef }) {
     let sanitized = sanitizeNetlistForExport(netlistText)
     const lowerCode = sanitized.toLowerCase()
     if (!lowerCode.includes('.tran') && !lowerCode.includes('.ac') && !lowerCode.includes('.dc ') && !lowerCode.includes('.op')) {
-      sanitized += "\n* -- Add your simulation command here --\n.tran 1u 1m 0\n.control\nrun\nplot all\n.endc\n.end\n"
+      sanitized += '\n* -- Add your simulation command here --\n.tran 1u 1m 0\n.control\nrun\nplot all\n.endc\n.end\n'
     }
     dispatch(setNetlist(sanitized))
     setSnackMessage('Netlist loaded in Simulator')
