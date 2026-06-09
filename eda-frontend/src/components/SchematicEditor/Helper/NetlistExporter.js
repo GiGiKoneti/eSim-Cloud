@@ -11,7 +11,7 @@ const { mxCell } = new mxGraphFactory()
  * @param {mxGraph} graph - The mxGraph editor instance
  * @returns {Object} { isValid, vertexCount, errorCount, pinNC, ground, errorMsg }
  */
-export function checkNetlistErc(graph) {
+export function checkNetlistErc (graph) {
   var list = graph.getModel().cells
   var vertexCount = 0
   var errorCount = 0
@@ -35,7 +35,7 @@ export function checkNetlistErc(graph) {
       ++ground
     }
   }
-  
+
   let errorMsg = null
   if (vertexCount === 0) {
     errorMsg = 'No Component added'
@@ -56,53 +56,61 @@ export function checkNetlistErc(graph) {
 }
 
 class Stack {
-    constructor(){
-        this.data = [];
-        this.top = 0;
+  constructor () {
+    this.data = []
+    this.top = 0
+  }
+
+  push (element) {
+    this.data[this.top] = element
+    this.top = this.top + 1
+  }
+
+  length () {
+    return this.top
+  }
+
+  peek () {
+    return this.data[this.top - 1]
+  }
+
+  isEmpty () {
+    return this.top === 0
+  }
+
+  pop () {
+    if (this.isEmpty() === false) {
+      this.top = this.top - 1
+      return this.data.pop() // removes the last element
     }
-    push(element) {
-      this.data[this.top] = element;
-      this.top = this.top + 1;
+  }
+
+  print () {
+    var top = this.top - 1 // because top points to index where new    element to be inserted
+    while (top >= 0) { // print upto 0th index
+      top--
     }
-   length() {
-      return this.top;
-   }
-   peek() {
-      return this.data[this.top-1];
-   }
-   isEmpty() {
-     return this.top === 0;
-   }
-   pop() {
-    if( this.isEmpty() === false ) {
-       this.top = this.top -1;
-       return this.data.pop(); // removes the last element
-     }
-   }
-   print() {
-      var top = this.top - 1; // because top points to index where new    element to be inserted
-      while(top >= 0) { // print upto 0th index
-           top--;
-      }
+  }
+
+  reverse () {
+    this._reverse(this.top - 1)
+  }
+
+  _reverse (index) {
+    if (index != 0) {
+      this._reverse(index - 1)
     }
-    reverse() {
-       this._reverse(this.top - 1 );
-    }
-    _reverse(index) {
-       if(index != 0) {
-          this._reverse(index-1);
-       }
-    }
+  }
 }
 
-function traverseWire(edge, vis) {
+function traverseWire (edge, vis) {
   var ans = []
   vis[edge.id] = 1
   if (edge.target.vertex == true || edge.source.vertex == true) {
-    //check for edges connected to such an edge 
+    // check for edges connected to such an edge
     if (edge.target.vertex == true) { ans.push(edge.target) }
     if (edge.source.vertex == true) { ans.push(edge.source) }
-    return ans;
+    return ans
   } else {
     vis[parseInt(edge.id)] = true
     if (edge.edges && edge.edges.length > 0) {
@@ -126,50 +134,50 @@ function traverseWire(edge, vis) {
  * @param {mxGraph} graph - The mxGraph editor instance
  * @returns {Object} List of cells
  */
-export function annotate(graph) {
-  var r = 1;
-  var v = 1;
-  var c = 1;
-  var l = 1;
-  var d = 1;
-  var q = 1;
-  var w = 1;
-  var list = graph.getModel().cells;
+export function annotate (graph) {
+  var r = 1
+  var v = 1
+  var c = 1
+  var l = 1
+  var d = 1
+  var q = 1
+  var w = 1
+  var list = graph.getModel().cells
 
   // DFS _________
-  var NODE_SETS = [];
-  var mp = Array(5000).fill(0);
-  NODE_SETS[0] = new Set(); // Defining ground
+  var NODE_SETS = []
+  var mp = Array(5000).fill(0)
+  NODE_SETS[0] = new Set() // Defining ground
 
   for (var property in list) {
     if (list[property].Component === true && list[property].symbol !== 'PWR') {
-      mxCell.prototype.ConnectedNode = null;
-      var component = list[property];
+      mxCell.prototype.ConnectedNode = null
+      var component = list[property]
 
       if (component.children !== null) {
         // pins
         for (var child in component.children) {
-          var pin = component.children[child];
+          var pin = component.children[child]
 
           if (pin != null && pin.vertex === true && pin.connectable) {
             if (pin.edges !== null && pin.edges.length !== 0) {
               if (mp[pin.id] === 1) {
-                continue;
+                continue
               }
-              var stk = new Stack();
-              var cur_node;
-              var cur_set = [];
-              var contains_gnd = 0;
+              var stk = new Stack()
+              var cur_node
+              var cur_set = []
+              var contains_gnd = 0
 
-              stk.push(pin);
-              stk.push(pin);
-              stk.push(pin);
+              stk.push(pin)
+              stk.push(pin)
+              stk.push(pin)
 
               while (!stk.isEmpty()) {
-                cur_node = stk.peek();
-                stk.pop();
-                mp[cur_node.id] = 1;
-                cur_set.push(cur_node);
+                cur_node = stk.peek()
+                stk.pop()
+                mp[cur_node.id] = 1
+                cur_set.push(cur_node)
 
                 for (var wire in cur_node.edges) {
                   if (cur_node.edges[wire].source !== null && cur_node.edges[wire].target !== null) {
@@ -179,7 +187,7 @@ export function annotate(graph) {
                       (cur_node.edges[wire].source.ParentComponent !== null &&
                         cur_node.edges[wire].source.ParentComponent.symbol === 'PWR')
                     ) {
-                      contains_gnd = 1;
+                      contains_gnd = 1
                     }
 
                     if (cur_node.edges[wire].target.vertex === true) {
@@ -187,7 +195,7 @@ export function annotate(graph) {
                         cur_node.edges[wire].target.id !== cur_node.id &&
                         !mp[cur_node.edges[wire].target.id]
                       ) {
-                        stk.push(cur_node.edges[wire].target);
+                        stk.push(cur_node.edges[wire].target)
                       }
                     }
 
@@ -196,15 +204,15 @@ export function annotate(graph) {
                         cur_node.edges[wire].source.id !== cur_node.id &&
                         !mp[cur_node.edges[wire].source.id]
                       ) {
-                        stk.push(cur_node.edges[wire].source);
+                        stk.push(cur_node.edges[wire].source)
                       }
                     }
 
-                    var conn_vertices = [];
+                    var conn_vertices = []
                     if (cur_node.edges[wire].edges && cur_node.edges[wire].edges.length > 0) {
                       for (const ed in cur_node.edges[wire].edges) {
                         if (!mp[cur_node.edges[wire].edges[ed].id]) {
-                          conn_vertices = conn_vertices.concat(...traverseWire(cur_node.edges[wire].edges[ed], mp));
+                          conn_vertices = conn_vertices.concat(...traverseWire(cur_node.edges[wire].edges[ed], mp))
                         }
                       }
                     }
@@ -214,7 +222,7 @@ export function annotate(graph) {
                         cur_node.edges[wire].source.id !== cur_node.id &&
                         !mp[cur_node.edges[wire].source.id]
                       ) {
-                        conn_vertices = conn_vertices.concat(...traverseWire(cur_node.edges[wire].source, mp));
+                        conn_vertices = conn_vertices.concat(...traverseWire(cur_node.edges[wire].source, mp))
                       }
                     }
 
@@ -223,23 +231,23 @@ export function annotate(graph) {
                         cur_node.edges[wire].target.id !== cur_node.id &&
                         !mp[cur_node.edges[wire].target.id]
                       ) {
-                        conn_vertices = conn_vertices.concat(...traverseWire(cur_node.edges[wire].target, mp));
+                        conn_vertices = conn_vertices.concat(...traverseWire(cur_node.edges[wire].target, mp))
                       }
                     }
 
                     conn_vertices.forEach((elem) => {
-                      stk.push(elem);
-                    });
+                      stk.push(elem)
+                    })
                   }
                 }
               }
 
               if (contains_gnd === 1) {
                 for (var x in cur_set) {
-                  NODE_SETS[0].add(cur_set[x]);
+                  NODE_SETS[0].add(cur_set[x])
                 }
               } else {
-                NODE_SETS.push(new Set(cur_set));
+                NODE_SETS.push(new Set(cur_set))
               }
             }
           }
@@ -250,58 +258,58 @@ export function annotate(graph) {
 
   for (var cellId in list) {
     if (list[cellId].Component === true && list[cellId].symbol !== 'PWR') {
-      mxCell.prototype.ConnectedNode = null;
-      var compNode = list[cellId];
+      mxCell.prototype.ConnectedNode = null
+      var compNode = list[cellId]
 
       if (compNode.symbol === 'R') {
-        component.value = component.symbol + r.toString();
-        component.properties.PREFIX = component.value;
-        ++r;
+        component.value = component.symbol + r.toString()
+        component.properties.PREFIX = component.value
+        ++r
       } else if (compNode.symbol === 'V') {
-        compNode.value = compNode.symbol + v.toString();
-        compNode.properties.PREFIX = compNode.value;
-        ++v;
+        compNode.value = compNode.symbol + v.toString()
+        compNode.properties.PREFIX = compNode.value
+        ++v
       } else if (compNode.symbol === 'C') {
-        compNode.value = compNode.symbol + c.toString();
-        compNode.properties.PREFIX = compNode.value;
-        ++c;
+        compNode.value = compNode.symbol + c.toString()
+        compNode.properties.PREFIX = compNode.value
+        ++c
       } else if (compNode.symbol === 'D') {
-        compNode.value = compNode.symbol + d.toString();
-        compNode.properties.PREFIX = compNode.value;
-        ++d;
+        compNode.value = compNode.symbol + d.toString()
+        compNode.properties.PREFIX = compNode.value
+        ++d
       } else if (compNode.symbol === 'Q') {
-        compNode.value = compNode.symbol + q.toString();
-        compNode.properties.PREFIX = compNode.value;
-        ++q;
+        compNode.value = compNode.symbol + q.toString()
+        compNode.properties.PREFIX = compNode.value
+        ++q
       } else {
-        compNode.value = compNode.symbol + w.toString();
-        compNode.properties.PREFIX = compNode.value;
-        ++w;
+        compNode.value = compNode.symbol + w.toString()
+        compNode.properties.PREFIX = compNode.value
+        ++w
       }
 
       if (compNode.children !== null) {
         for (var childIdx in compNode.children) {
-          var pinElem = compNode.children[childIdx];
+          var pinElem = compNode.children[childIdx]
 
           if (pinElem.vertex === true && pinElem.connectable) {
             if (pinElem.edges !== null && pinElem.edges.length !== 0) {
               NODE_SETS.forEach((e, i) => {
-                var done = 0;
+                var done = 0
                 e.forEach((vertex) => {
                   if (vertex.id == pinElem.id && done === 0) {
                     if (i === 0) {
-                      pinElem.edges[0].node = 0;
-                      pinElem.ConnectedNode = 0;
-                      pinElem.edges[0].value = pinElem.edges[0].node;
+                      pinElem.edges[0].node = 0
+                      pinElem.ConnectedNode = 0
+                      pinElem.edges[0].value = pinElem.edges[0].node
                     } else {
-                      pinElem.edges[0].node = 'COM.' + i.toString();
-                      pinElem.ConnectedNode = 'COM.' + i.toString();
-                      pinElem.edges[0].value = pinElem.edges[0].node;
+                      pinElem.edges[0].node = 'COM.' + i.toString()
+                      pinElem.ConnectedNode = 'COM.' + i.toString()
+                      pinElem.edges[0].value = pinElem.edges[0].node
                     }
-                    done = 1;
+                    done = 1
                   }
-                });
-              });
+                })
+              })
             }
           }
           // Additional condition to handle ground connection
@@ -313,21 +321,21 @@ export function annotate(graph) {
                 (edge.target.ParentComponent.symbol !== 'PWR' && edge.target.ParentComponent.symbol !== 'GND')
               ) {
                 if (pinElem.ConnectedNode === 0) {
-                  edge.node = 0;
-                  edge.value = edge.node;
+                  edge.node = 0
+                  edge.value = edge.node
                 } else {
-                  edge.node = pinElem.ConnectedNode;
-                  edge.value = edge.node;
+                  edge.node = pinElem.ConnectedNode
+                  edge.value = edge.node
                 }
               }
-            });
+            })
           }
         }
       }
     }
   }
 
-  return list;
+  return list
 }
 
 /**
@@ -335,7 +343,7 @@ export function annotate(graph) {
  * @param {mxGraph} graph - The mxGraph editor instance
  * @returns {Object} { models: string, main: string, componentlist: Array, nodelist: Set }
  */
-export function buildNetlistFromGraph(graph) {
+export function buildNetlistFromGraph (graph) {
   var r = 1
   var v = 1
   var c = 1
@@ -345,9 +353,9 @@ export function buildNetlistFromGraph(graph) {
     nodelist: new Set()
   }
   var k = ''
-  
+
   var list = annotate(graph)
-  
+
   for (var property in list) {
     if (list[property].Component === true && list[property].symbol !== 'PWR') {
       var compobj = {
@@ -378,22 +386,22 @@ export function buildNetlistFromGraph(graph) {
             if (pin.edges !== null && pin.edges.length !== 0) {
               for (var wire in pin.edges) {
                 if (pin.edges[wire].source !== null && pin.edges[wire].target !== null) {
-                  // Wire to Pin Connection 
+                  // Wire to Pin Connection
                   if (pin.edges[wire].source.edge === true) {
                     pin.edges[wire].sourceVertex = pin.edges[wire].source.id
                     pin.edges[wire].targetVertex = pin.edges[wire].target.id
-                    // Pin to Wire Connection 
+                    // Pin to Wire Connection
                   } else if (pin.edges[wire].target.edge === true) {
                     pin.edges[wire].sourceVertex = pin.edges[wire].source.id
                     pin.edges[wire].targetVertex = pin.edges[wire].target.id
                     pin.edges[wire].tarx = pin.edges[wire].geometry.targetPoint.x
                     pin.edges[wire].tary = pin.edges[wire].geometry.targetPoint.y
-                    // Souce or Target is Ground 
-                  } else if (pin.edges[wire].source.ParentComponent.symbol === 'PWR'  ||  pin.edges[wire].target.ParentComponent.symbol === 'PWR') {
+                    // Souce or Target is Ground
+                  } else if (pin.edges[wire].source.ParentComponent.symbol === 'PWR' || pin.edges[wire].target.ParentComponent.symbol === 'PWR') {
                     pin.edges[wire].value = 0
                     pin.edges[wire].sourceVertex = pin.edges[wire].source.id
                     pin.edges[wire].targetVertex = pin.edges[wire].target.id
-                    // Pin to Pin Connection, Setting the Source to be the Node Value 
+                    // Pin to Pin Connection, Setting the Source to be the Node Value
                   } else {
                     pin.edges[wire].sourceVertex = pin.edges[wire].source.id
                     pin.edges[wire].targetVertex = pin.edges[wire].target.id
@@ -411,14 +419,14 @@ export function buildNetlistFromGraph(graph) {
         compobj.name = component.symbol
         compobj.magnitude = 10
         var nodeNumber = 0
-        for(var childIdx in component.children){
-            nodeNumber++
-            var pinEdges = component.children[childIdx].edges
-            var nodeVal = (pinEdges && pinEdges.length > 0 && pinEdges[0].node !== undefined) ? pinEdges[0].node : 'NC'
-            compobj['node' + nodeNumber.toString()] = nodeVal
-            if (nodeVal !== 'NC') {
-              compDetails.nodelist.add(nodeVal)
-            }
+        for (var childIdx in component.children) {
+          nodeNumber++
+          var pinEdges = component.children[childIdx].edges
+          var nodeVal = (pinEdges && pinEdges.length > 0 && pinEdges[0].node !== undefined) ? pinEdges[0].node : 'NC'
+          compobj['node' + nodeNumber.toString()] = nodeVal
+          if (nodeVal !== 'NC') {
+            compDetails.nodelist.add(nodeVal)
+          }
         }
         compDetails.componentlist.push(component.properties.PREFIX)
       }

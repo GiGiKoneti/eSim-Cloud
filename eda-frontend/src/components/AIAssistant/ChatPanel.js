@@ -121,13 +121,13 @@ export default function ChatPanel () {
    */
   useEffect(() => {
     // Check if there is an error_prompt in the URL (BUG 2 fix)
-    const urlParams = new URLSearchParams(window.location.hash.split('?')[1]);
-    const errorPrompt = urlParams.get('error_prompt');
+    const urlParams = new URLSearchParams(window.location.hash.split('?')[1])
+    const errorPrompt = urlParams.get('error_prompt')
     if (errorPrompt) {
-      setInputValue(errorPrompt);
-      setPrefilled(true);
+      setInputValue(errorPrompt)
+      setPrefilled(true)
       // Clean up the URL to prevent re-triggering on refresh
-      window.history.replaceState(null, '', window.location.pathname + window.location.hash.split('?')[0]);
+      window.history.replaceState(null, '', window.location.pathname + window.location.hash.split('?')[0])
     }
 
     const handleErrorPrompt = (event) => {
@@ -247,7 +247,7 @@ export default function ChatPanel () {
             id="chat-panel-input"
             className={classes.textField}
             inputRef={inputRef}
-            label="Type a message…"
+            placeholder="Type a message…"
             variant="outlined"
             size="small"
             multiline

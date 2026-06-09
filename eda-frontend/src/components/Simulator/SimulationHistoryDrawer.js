@@ -204,7 +204,7 @@ export default function SimulationHistoryDrawer ({ open, onClose, onSelectResult
                 No simulation history yet. Run a simulation to see it here.
               </Typography>
             </div>
-            )
+          )
           : (
             <List disablePadding>
               {history.map((entry, idx) => (
@@ -228,13 +228,13 @@ export default function SimulationHistoryDrawer ({ open, onClose, onSelectResult
                             className={classes.successIcon}
                             titleAccess="Simulation succeeded"
                           />
-                          )
+                        )
                         : (
                           <ErrorIcon
                             className={classes.failureIcon}
                             titleAccess="Simulation failed"
                           />
-                          )}
+                        )}
                     </ListItemIcon>
 
                     {/* Date + simulation type */}
@@ -256,7 +256,7 @@ export default function SimulationHistoryDrawer ({ open, onClose, onSelectResult
                 </React.Fragment>
               ))}
             </List>
-            )}
+          )}
       </div>
 
       {/* ── Footer — Clear History ─────────────────────────────────────── */}

@@ -1,40 +1,98 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react'
+import React, { useEffect, useState, useRef } from 'react'
 import PropTypes from 'prop-types'
 import {
-  Hidden,
   List,
   ListItem,
-  Collapse,
   ListItemIcon,
-  IconButton,
   Tooltip,
-  Divider,
-  Typography,
-  Snackbar,
-  CircularProgress
+  TextField,
+  InputAdornment,
+  Popper,
+  Fade,
+  Paper,
+  ClickAwayListener,
+  Grid,
+  Typography
 } from '@material-ui/core'
+import Loader from 'react-loader-spinner'
+import SearchIcon from '@material-ui/icons/Search'
+import StarIcon from '@material-ui/icons/Star'
 import { makeStyles } from '@material-ui/core/styles'
-import ExpandLess from '@material-ui/icons/ExpandLess'
-import ExpandMore from '@material-ui/icons/ExpandMore'
-import CloseIcon from '@material-ui/icons/Close'
+
+// Custom EDA Category icons
+import {
+  PassiveIcon,
+  AnalogIcon,
+  TransistorIcon,
+  IndicatorIcon,
+  SwitchIcon,
+  ModellingBlockIcon,
+  ElectromechanicalIcon,
+  PowerIcon,
+  DigitalIcon
+} from './Helper/EdaIcons'
 
 import './Helper/SchematicEditor.css'
 import { useDispatch, useSelector } from 'react-redux'
-import { fetchLibraries, toggleCollapse, fetchComponents, toggleSimulate, fetchComponentsBySearch } from '../../redux/actions/index'
+import { fetchLibraries, fetchComponents } from '../../redux/actions/index'
 import SideComp from './SideComp.js'
-import ComponentSearchBar from './ComponentSearchBar'
-import SimulationProperties from './SimulationProperties'
-import { getFavourites, removeFavourite } from '../../utils/favouritesStorage'
-import { AddComponent } from './Helper/SideBar.js'
-
-const COMPONENTS_PER_ROW = 3
+import { AddProbe } from './Helper/SideBar.js'
+import { getFavourites } from '../../utils/favouritesStorage'
+import api from '../../utils/Api'
 
 const useStyles = makeStyles((theme) => ({
   toolbar: {
     minHeight: '90px'
   },
-  nested: {
-    paddingLeft: theme.spacing(2),
+  paletteList: {
+    width: '60px',
+    backgroundColor: '#f8f9fa',
+    borderRight: '1px solid #e0e0e0',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    paddingTop: '8px',
+    height: '100%',
+    overflowY: 'auto'
+  },
+  paletteItem: {
+    display: 'flex',
+    justifyContent: 'center',
+    padding: '6px 0',
+    borderRadius: '8px',
+    margin: '2px',
+    width: '42px',
+    '&:hover': {
+      backgroundColor: '#e3f2fd',
+      color: '#1976d2'
+    }
+  },
+  activeItem: {
+    backgroundColor: '#e3f2fd',
+    color: '#1976d2',
+    borderLeft: '3px solid #1976d2'
+  },
+  icon: {
+    minWidth: 'auto',
+    color: 'inherit'
+  },
+  flyoutPaper: {
+    width: '320px',
+    maxHeight: '80vh',
+    display: 'flex',
+    flexDirection: 'column',
+    borderRadius: '8px',
+    overflow: 'hidden',
+    border: '1px solid #e0e0e0'
+  },
+  flyoutContent: {
+    padding: '8px',
+    overflowY: 'auto',
+    flexGrow: 1,
+    backgroundColor: '#f5f5f5'
+  },
+  gridContainer: {
+    margin: 0,
     width: '100%'
   },
   head: {
@@ -102,62 +160,239 @@ const useStyles = makeStyles((theme) => ({
   }
 }))
 
-// ─────────────────────────────────────────────────────────────────────────────
-// FavChip — a draggable chip for a favourite component.
-//
-// Registers itself with mxGraph's makeDraggable (via AddComponent) so that
-// dragging onto the canvas works exactly like dragging from the library list.
-// ─────────────────────────────────────────────────────────────────────────────
-function FavChip ({ component, onRemove, classes }) {
-  const chipRef = useRef(null)
-
-  // Register this DOM element as an mxGraph drag source — identical mechanism
-  // to what SideComp.js does via AddComponent(component, imageRef.current)
-  useEffect(() => {
-    if (chipRef.current) {
-      AddComponent(component, chipRef.current)
+const UI_CATEGORIES = [
+  {
+    id: 'search',
+    name: 'Search',
+    icon: <SearchIcon />,
+    match: () => false // Handled manually via search API
+  },
+  {
+    id: 'favourites',
+    name: 'Favourites',
+    icon: <StarIcon style={{ color: '#f4b400' }} />,
+    isFavouritesCategory: true
+  },
+  {
+    id: 'probes',
+    name: 'Probes',
+    isProbeCategory: true,
+    icon: (
+      <div style={{
+        width: 22,
+        height: 22,
+        borderRadius: '4px',
+        background: '#1a1a2e',
+        border: '2px solid #00e676',
+        color: '#00e676',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: '12px',
+        fontWeight: 'bold',
+        fontFamily: 'monospace, sans-serif'
+      }}>
+        V
+      </div>
+    )
+  },
+  {
+    id: 'passive',
+    name: 'Passive',
+    icon: <PassiveIcon />,
+    matchFn: (comp) => {
+      const n = (comp.full_name || comp.name || '').toLowerCase()
+      const kw = (comp.keyword || '').toLowerCase()
+      const svgPath = (comp.svg_path || '').toLowerCase()
+      const prefix = (comp.symbol_prefix || '').toLowerCase()
+      return prefix === 'r' || prefix === 'c' || prefix === 'l' ||
+        svgPath.includes('esim_subcircuits/res') ||
+        svgPath.includes('esim_subcircuits/cap') ||
+        n.includes('resistor') || n.includes('capacitor') || n.includes('inductor') ||
+        n === 'r' || n === 'c' || n === 'l' ||
+        kw.includes('resistor') || kw.includes('capacitor') || kw.includes('inductor')
     }
+  },
+  {
+    id: 'analog', name: 'Analog', icon: <AnalogIcon />, matchFn: (comp) => { const n = (comp.full_name || comp.name || '').toLowerCase(); const kw = (comp.keyword || '').toLowerCase(); const svgPath = (comp.svg_path || '').toLowerCase(); return svgPath.includes('analog') || svgPath.includes('opamp') || n.includes('analog') || n.includes('opamp') || kw.includes('analog') || kw.includes('opamp') }
+  },
+  {
+    id: 'transistors',
+    name: 'Transistors',
+    icon: <TransistorIcon />,
+    matchFn: (comp) => {
+      const n = (comp.full_name || comp.name || '').toLowerCase()
+      const kw = (comp.keyword || '').toLowerCase()
+      const svgPath = (comp.svg_path || '').toLowerCase()
+      const prefix = (comp.symbol_prefix || '').toUpperCase()
+      return svgPath.includes('transistor_bjt') || svgPath.includes('transistor_fet') ||
+        svgPath.includes('transistor_igbt') ||
+        (prefix === 'Q' && !svgPath.includes('triac') && !svgPath.includes('thyristor')) ||
+        (prefix === 'M' && (n.includes('mos') || svgPath.includes('transistor'))) ||
+        prefix === 'MES' ||
+        n.includes('nmos') || n.includes('pmos') || n.includes('npn') || n.includes('pnp') ||
+        n.includes('mosfet') || n.includes('jfet') || n.includes('igbt') ||
+        n.includes('darlington') ||
+        kw.includes('transistor') || kw.includes('mosfet') || kw.includes('jfet')
+    }
+  },
+  {
+    id: 'indicators',
+    name: 'Indicators',
+    icon: <IndicatorIcon />,
+    matchFn: (comp) => {
+      const n = (comp.full_name || comp.name || '').toLowerCase()
+      const kw = (comp.keyword || '').toLowerCase()
+      const svgPath = (comp.svg_path || '').toLowerCase()
+      return svgPath.includes('led') ||
+        n.includes('led') || n.includes('lamp') || n.includes('display') ||
+        n.includes('indicator') || n.includes('neopixel') ||
+        n.startsWith('bar') ||
+        kw.includes('led') || kw.includes('lamp') || kw.includes('neopixel')
+    }
+  },
+  {
+    id: 'switches',
+    name: 'Switches',
+    icon: <SwitchIcon />,
+    matchFn: (comp) => {
+      const n = (comp.full_name || comp.name || '').toLowerCase()
+      const kw = (comp.keyword || '').toLowerCase()
+      const svgPath = (comp.svg_path || '').toLowerCase()
+      const prefix = (comp.symbol_prefix || '').toUpperCase()
+
+      const isTransistor = (prefix === 'Q' || svgPath.includes('transistor')) && !svgPath.includes('triac') && !svgPath.includes('thyristor')
+
+      return !isTransistor && (
+        svgPath.includes('triac') || svgPath.includes('thyristor') ||
+        prefix === 'SW' ||
+        n.includes('switch') || n.includes('relay') ||
+        n.includes('triac') || n.includes('thyristor') || n.includes('circuit_breaker') ||
+        prefix === 'CB' ||
+        kw.includes('switch') || kw.includes('triac') || kw.includes('thyristor') || kw.includes('relay')
+      )
+    }
+  },
+  {
+    id: 'modelling_block',
+    name: 'Modelling Block',
+    icon: <ModellingBlockIcon />,
+    matchFn: (comp) => {
+      const n = (comp.full_name || comp.name || '').toLowerCase()
+      const svgPath = (comp.svg_path || '').toLowerCase()
+      return svgPath.includes('esim_hybrid') ||
+        n.includes('adc_bridge') || n.includes('dac_bridge')
+    }
+  },
+  {
+    id: 'electromechanical',
+    name: 'Electromechanical',
+    icon: <ElectromechanicalIcon />,
+    matchFn: (comp) => {
+      const n = (comp.full_name || comp.name || '').toLowerCase()
+      const kw = (comp.keyword || '').toLowerCase()
+      const svgPath = (comp.svg_path || '').toLowerCase()
+      const prefix = (comp.symbol_prefix || '').toUpperCase()
+      return svgPath.includes('motor') ||
+        (prefix === 'M' && !n.includes('mos') && !svgPath.includes('transistor')) ||
+        prefix === 'BZ' || prefix === 'LS' || prefix === 'SC' ||
+        n.includes('motor') || n.includes('fan') || n.includes('buzzer') ||
+        n.includes('speaker') || n.includes('microphone') || n.includes('solar') ||
+        (n.includes('battery') && !n.includes('+batt') && !n.includes('-batt')) || n.includes('earphone') ||
+        kw.includes('motor') || kw.includes('speaker') || kw.includes('buzzer') ||
+        (kw.includes('battery') && !n.includes('+batt') && !n.includes('-batt')) || kw.includes('solar')
+    }
+  },
+  {
+    id: 'power',
+    name: 'Power',
+    icon: <PowerIcon />,
+    matchFn: (comp) => {
+      const n = (comp.full_name || comp.name || '').toLowerCase()
+      const kw = (comp.keyword || '').toLowerCase()
+      const svgPath = (comp.svg_path || '').toLowerCase()
+      const prefix = (comp.symbol_prefix || '').toUpperCase()
+      return svgPath.includes('power.lib') || prefix === 'PWR' || prefix === 'FLG' ||
+        kw.includes('power-flag') || n.includes('+batt') || n.includes('-batt')
+    }
+  },
+  {
+    id: 'digital',
+    name: 'Digital',
+    icon: <DigitalIcon />,
+    matchFn: (comp) => {
+      const n = (comp.full_name || comp.name || '').toLowerCase()
+      const kw = (comp.keyword || '').toLowerCase()
+      const svgPath = (comp.svg_path || '').toLowerCase()
+      return svgPath.includes('4xxx') || svgPath.includes('oscillator') ||
+        n.includes('74hc') || n.includes('74ls') || n.includes('cd4') ||
+        n.includes('gate') || n.includes('flipflop') || n.includes('counter') ||
+        n.includes('shift_register') || n.includes('decoder') ||
+        kw.includes('cmos') || kw.includes('ttl')
+    }
+  }
+]
+
+const searchOptions = {
+  NAME: 'name__icontains',
+  KEYWORD: 'keyword__icontains',
+  DESCRIPTION: 'description__icontains',
+  COMPONENT_LIBRARY: 'component_library__library_name__icontains',
+  PREFIX: 'symbol_prefix'
+}
+
+const searchOptionsList = ['NAME', 'KEYWORD', 'DESCRIPTION', 'COMPONENT_LIBRARY', 'PREFIX']
+
+// Draggable probe tile for the flyout
+function ProbeItem ({ probeType, label, color, description }) {
+  const imgRef = useRef(null)
+  useEffect(() => {
+    if (imgRef.current) AddProbe(probeType, imgRef.current)
     // eslint-disable-next-line
   }, [])
-
   return (
-    <div
-      ref={chipRef}
-      className={classes.favChip}
-      title={component.full_name || component.name}
-      aria-label={`Favourite: ${component.full_name || component.name}. Drag to canvas or click X to remove.`}
-    >
-      <span className={classes.favChipLabel}>{component.name}</span>
-      <IconButton
-        className={classes.favChipRemove}
-        size="small"
-        onClick={(e) => {
-          e.stopPropagation()
-          onRemove(component.id)
-        }}
-        aria-label={`Remove ${component.name} from favourites`}
-      >
-        <CloseIcon className={classes.favChipRemoveIcon} />
-      </IconButton>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', cursor: 'grab' }}>
+      <Tooltip title={description} arrow>
+        <div
+          ref={imgRef}
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: probeType === 'V' ? '4px' : '50%',
+            background: '#1a1a2e',
+            border: `3px solid ${color}`,
+            color: color,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '20px',
+            fontWeight: 'bold',
+            fontFamily: 'monospace, sans-serif',
+            userSelect: 'none',
+            boxShadow: `0 0 6px ${color}`
+          }}
+        >
+          {probeType === 'V' ? 'V' : 'A'}
+        </div>
+      </Tooltip>
+      <span style={{ fontSize: '11px', textAlign: 'center', marginTop: '4px', color, fontWeight: 'bold' }}>
+        {label}
+      </span>
     </div>
   )
 }
 
-FavChip.propTypes = {
-  component: PropTypes.object.isRequired,
-  onRemove: PropTypes.func.isRequired,
-  classes: PropTypes.object.isRequired
+ProbeItem.propTypes = {
+  probeType: PropTypes.string.isRequired,
+  label: PropTypes.string.isRequired,
+  color: PropTypes.string.isRequired,
+  description: PropTypes.string.isRequired
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Main ComponentSidebar
-// ─────────────────────────────────────────────────────────────────────────────
 export default function ComponentSidebar ({ compRef, ltiSimResult, setLtiSimResult }) {
   const classes = useStyles()
   const libraries = useSelector(state => state.schematicEditorReducer.libraries)
-  const collapse = useSelector(state => state.schematicEditorReducer.collapse)
   const components = useSelector(state => state.schematicEditorReducer.components)
-  const isSimulate = useSelector(state => state.schematicEditorReducer.isSimulate)
 
   const dispatch = useDispatch()
 
@@ -170,361 +405,346 @@ export default function ComponentSidebar ({ compRef, ltiSimResult, setLtiSimResu
     setFavourites(getFavourites())
   }, [])
 
-  // Snackbar for star toggle feedback
-  const [snackbar, setSnackbar] = useState({ open: false, message: '' })
-  const showSnackbar = (msg) => setSnackbar({ open: true, message: msg })
-  const closeSnackbar = (_, reason) => {
-    if (reason === 'clickaway') return
-    setSnackbar((s) => ({ ...s, open: false }))
+  // Search State for Flyout
+  const [isSearchedResultsEmpty, setIssearchedResultsEmpty] = useState(false)
+  const [searchText, setSearchText] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [searchedComponentList, setSearchedComponents] = useState([])
+  const [searchOption, setSearchOption] = useState('NAME')
+  const timeoutId = useRef()
+
+  const handleSearchOptionType = (evt) => {
+    setSearchedComponents([])
+    setSearchOption(evt.target.value)
   }
 
-  const [favOpen, setFavOpen] = useState(false)
-  const [uploaded, setuploaded] = useState(false)
-  const [def, setdef] = useState(false)
-  const [additional, setadditional] = useState(false)
+  const handleSearchText = (evt) => {
+    if (searchText.length === 0) {
+      setSearchedComponents([])
+    }
+    setSearchText(evt.target.value)
+    setSearchedComponents([])
+  }
 
-  // Redux-backed API search state
-  const searchResults = useSelector(state => state.schematicEditorReducer.searchResults)
-  const searchLoading = useSelector(state => state.schematicEditorReducer.searchLoading)
-  const searchError = useSelector(state => state.schematicEditorReducer.searchError)
-  const [activeSearchQuery, setActiveSearchQuery] = useState('')
-
-  const handleSearchChange = useCallback((query, searchOption = 'ALL') => {
-    setActiveSearchQuery(query)
-    dispatch(fetchComponentsBySearch(query, searchOption))
-  }, [dispatch])
-
-  // ── Ref for the ComponentSearchBar ───────────────────────────────────────
-  const searchBarRef = useRef(null)
-
-  // ── Global keyboard shortcuts ─────────────────────────────────────────────
   useEffect(() => {
-    const isModifierPressed = (evt) => evt.metaKey || evt.ctrlKey
-
-    const isTypingContext = (evt) => {
-      const tag = evt.target.tagName
-      const isInput = tag === 'INPUT' || tag === 'TEXTAREA'
-      const isEditable = evt.target.isContentEditable
-      return isInput || isEditable
-    }
-
-    const handleKeyDown = (evt) => {
-      if (isModifierPressed(evt) && evt.key === 'k') {
-        evt.preventDefault()
-        if (searchBarRef.current) {
-          searchBarRef.current.focus()
+    clearTimeout(timeoutId.current)
+    if (!searchText.trim()) return
+    timeoutId.current = setTimeout(() => {
+      setLoading(true)
+      let config = {}
+      const token = localStorage.getItem('esim_token')
+      if (token && token !== undefined) {
+        config = {
+          headers: {
+            Authorization: `Token ${token}`
+          }
         }
-        return
       }
+      api.get(`components/?${searchOptions[searchOption]}=${searchText}`, config)
+        .then(
+          (res) => {
+            if (res.data.length === 0) {
+              setIssearchedResultsEmpty(true)
+            } else {
+              setIssearchedResultsEmpty(false)
+              setSearchedComponents([...res.data])
+            }
+          }
+        )
+        .catch((err) => { console.error(err) })
+      setLoading(false)
+    }, 800)
+  }, [searchText, searchOption])
 
-      if (evt.key === '/' && !isTypingContext(evt)) {
-        evt.preventDefault()
-        if (searchBarRef.current) {
-          searchBarRef.current.focus()
-        }
-        return
-      }
-
-      if (evt.key === 'Escape' && searchBarRef.current &&
-          searchBarRef.current.isFocused()) {
-        evt.preventDefault()
-        searchBarRef.current.clear()
-      }
-    }
-
-    document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [])
-
-  const handleCollapse = (id) => {
-    if (collapse[id] === false && (!components[id] || components[id].length === 0)) {
-      dispatch(fetchComponents(id))
-    }
-    dispatch(toggleCollapse(id))
-  }
+  // Flyout State
+  const [anchorEl, setAnchorEl] = useState(null)
+  const [activeCategory, setActiveCategory] = useState(null)
+  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [fetchedLibs, setFetchedLibs] = useState(new Set())
 
   useEffect(() => {
     dispatch(fetchLibraries())
   }, [dispatch])
 
+  // Listen for keyboard shortcut probe events (V / I keys)
+  const probeCategoryRef = React.useRef(null)
   useEffect(() => {
-    if (libraries.filter((ob) => { return ob.default === true }).length !== 0) { setdef(true) } else { setdef(false) }
-    if (libraries.filter((ob) => { return ob.additional === true }).length !== 0) { setadditional(true) } else { setadditional(false) }
-    if (libraries.filter((ob) => { return (!ob.additional && !ob.default) }).length !== 0) { setuploaded(true) } else { setuploaded(false) }
-  }, [libraries])
+    const probesCategory = UI_CATEGORIES.find(c => c.id === 'probes')
+    probeCategoryRef.current = probesCategory
 
-  // ── Chip remove handler ───────────────────────────────────────────────────
-  const handleChipRemove = (componentId) => {
-    const updated = removeFavourite(componentId)
-    setFavourites(updated)
-    showSnackbar('Removed from favourites')
-  }
-
-  const chunk = (array, size) => {
-    return array.reduce((chunks, item, i) => {
-      if (i % size === 0) {
-        chunks.push([item])
-      } else {
-        chunks[chunks.length - 1].push(item)
+    const handler = (evt) => {
+      // Open the probes flyout — anchor to the probes list item in the sidebar
+      const probeListItem = document.getElementById('probe-category-button')
+      if (probeListItem) {
+        setAnchorEl(probeListItem)
+        setActiveCategory(probeCategoryRef.current)
+        setShowAdvanced(false)
       }
-      return chunks
-    }, [])
+    }
+    document.addEventListener('openProbePanel', handler)
+    return () => document.removeEventListener('openProbePanel', handler)
+    // eslint-disable-next-line
+  }, [])
+
+  const handleCategoryClick = (event, category) => {
+    setAnchorEl(event.currentTarget)
+    setActiveCategory(category)
+    setShowAdvanced(false)
   }
 
-  const libraryDropDown = (library) => {
-    return (
-      <div key={library.id}>
-        <ListItem onClick={(e, id = library.id) => handleCollapse(id)} button divider>
-          <span className={classes.head}>{library.library_name.slice(0, -4)}</span>
-          {collapse[library.id] ? <ExpandLess /> : <ExpandMore />}
-        </ListItem>
-        <Collapse in={collapse[library.id]} timeout={'auto'} unmountOnExit mountOnEnter exit={false}>
-          <List component="div" disablePadding dense >
-            {/* Chunked Components of Library */}
-            {components[library.id] && chunk(components[library.id], COMPONENTS_PER_ROW).map((componentChunk) => {
-              return (
-                <ListItem key={componentChunk[0].svg_path} divider>
-                  {componentChunk.map((component) => {
-                    return (
-                      <ListItemIcon key={component.full_name} style={{ position: 'relative' }}>
-                        {/* Pass localStorage favourites state to SideComp */}
-                        <SideComp
-                          component={component}
-                          setFavourite={setFavourites}
-                          favourite={favourites}
-                        />
-                      </ListItemIcon>
-                    )
-                  })}
-                </ListItem>
-              )
-            })}
-          </List>
-        </Collapse>
-      </div>
-    )
+  useEffect(() => {
+    if (activeCategory && libraries && libraries.length > 0) {
+      const newFetched = new Set(fetchedLibs)
+      let changed = false
+      libraries.forEach(lib => {
+        if (!newFetched.has(lib.id)) {
+          dispatch(fetchComponents(lib.id))
+          newFetched.add(lib.id)
+          changed = true
+        }
+      })
+      if (changed) {
+        setFetchedLibs(newFetched)
+      }
+    }
+  }, [activeCategory, libraries, fetchedLibs, dispatch])
+
+  const handleClose = () => {
+    setAnchorEl(null)
+    setActiveCategory(null)
+    setShowAdvanced(false)
   }
 
+  const allComponents = React.useMemo(() => {
+    return Object.values(components)
+      .filter(val => Array.isArray(val))
+      .flat()
+  }, [components])
+
+  const activeComponents = React.useMemo(() => {
+    if (!activeCategory || activeCategory.id === 'search') return []
+
+    if (activeCategory.matchFn) {
+      return allComponents.filter(comp => activeCategory.matchFn(comp))
+    }
+
+    return []
+  }, [activeCategory, allComponents])
+
+  const open = Boolean(anchorEl)
 
   return (
     <>
-      <Hidden smDown>
-        <div className={classes.toolbar} />
-      </Hidden>
+      <div className={classes.toolbar} />
 
-      <div style={isSimulate ? { display: 'none' } : {}}>
-        {/* Display List of categorized components */}
-        <List>
-          <ListItem button>
-            <h2 style={{ margin: '5px' }}>Components List</h2>
-          </ListItem>
-
-          {/* Component search bar — dispatches to backend API */}
-          <ListItem>
-            <ComponentSearchBar
-              ref={searchBarRef}
-              onSearchChange={handleSearchChange}
-              placeholder="Search components…"
-            />
-          </ListItem>
-
-          {/* ── Favourites Chips Bar ──────────────────────────────────────────────
-              Shown to ALL users (no auth check). Persists via localStorage.
-              Empty when no favourites — no placeholder shown.
-          ─────────────────────────────────────────────────────────────────────── */}
-          {favourites.length > 0 && (
-            <ListItem style={{ padding: 0, flexDirection: 'column', alignItems: 'flex-start' }}>
-              <Typography
-                variant="caption"
-                style={{
-                  fontWeight: 700,
-                  letterSpacing: '0.08em',
-                  color: '#616161',
-                  padding: '4px 8px 0'
-                }}
+      {/* Component palette — always visible, simulation mode no longer hides it */}
+      <div>
+        <List className={classes.paletteList}>
+          {UI_CATEGORIES.map((cat) => (
+            <Tooltip key={cat.id} title={cat.name} placement="right">
+              <ListItem
+                button
+                id={cat.id === 'probes' ? 'probe-category-button' : undefined}
+                className={`${classes.paletteItem} ${activeCategory?.id === cat.id ? classes.activeItem : ''}`}
+                onClick={(e) => handleCategoryClick(e, cat)}
               >
-                ⭐ FAVOURITES
-              </Typography>
-              <div className={classes.favBar}>
-                {favourites.map((comp) => (
-                  <FavChip
-                    key={comp.id}
-                    component={comp}
-                    onRemove={handleChipRemove}
-                    classes={classes}
-                  />
-                ))}
-              </div>
-            </ListItem>
-          )}
-
-          <div style={{ maxHeight: '70vh', overflowY: 'auto', overflowX: 'hidden' }} >
-
-            {/* API search results from ComponentSearchBar */}
-            {activeSearchQuery.trim() !== '' && (
-              searchLoading ? (
-                <div style={{ display: 'flex', justifyContent: 'center', padding: '16px' }}>
-                  <CircularProgress size={24} />
-                </div>
-              ) : searchError ? (
-                <Typography variant="body2" style={{ padding: '16px', color: '#c62828' }}>
-                  Search failed. Please try again.
-                </Typography>
-              ) : (searchResults && searchResults.length > 0) ? (
-                chunk(searchResults, COMPONENTS_PER_ROW).map((componentChunk) => {
-                  return (
-                    <ListItem key={componentChunk.map((c) => c.id).join('-')} divider>
-                      {componentChunk.map((component) => {
-                        return (
-                          <ListItemIcon key={component.id}>
-                            <SideComp component={component} setFavourite={setFavourites} favourite={favourites} />
-                          </ListItemIcon>
-                        )
-                      })}
-                    </ListItem>
-                  )
-                })
-              ) : (
-                <Typography variant="body2" style={{ padding: '16px', color: '#999' }}>
-                  No components found for &ldquo;{activeSearchQuery}&rdquo;
-                </Typography>
-              )
-            )}
-
-            {activeSearchQuery.trim() === '' && favourites && favourites.length > 0 &&
-              <>
-                <ListItem button onClick={() => setFavOpen((prev) => !prev)} divider>
-                  <span className={classes.head}>Favourite Components</span>
-                  <div>
-                    {favOpen ? <ExpandLess /> : <ExpandMore />}
-                  </div>
-                </ListItem>
-                <Collapse in={favOpen} timeout="auto" unmountOnExit>
-                  <List component="div" disablePadding>
-                    <ListItem>
-                      <div style={{ marginLeft: '-30px' }}>
-                        {chunk(favourites, 3).map((componentChunk) => {
-                          return (
-                            <div key={`fav-chunk-${componentChunk[0].id}`}>
-                              <ListItem key={`fav-item-${componentChunk[0].id}`} divider>
-                                {
-                                  componentChunk.map((component) => {
-                                    return (
-                                      <ListItemIcon key={component.full_name}>
-                                        <SideComp favourite={favourites} setFavourite={setFavourites} component={component} />
-                                      </ListItemIcon>
-                                    )
-                                  }
-                                  )
-                                }
-                              </ListItem>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    </ListItem>
-                  </List>
-                </Collapse>
-              </>
-            }
-            {activeSearchQuery.trim() === '' &&
-            <>
-              <div style={!def ? { display: 'none' } : {}}>
-                <Divider />
-                <ListItem dense divider style={{ backgroundColor: '#e8e8e8' }}>
-                  <span>DEFAULT</span>
-                </ListItem>
-                <Divider />
-                { libraries.sort(function (a, b) {
-                  const textA = a.library_name.toUpperCase()
-                  const textB = b.library_name.toUpperCase()
-                  return (textA < textB) ? -1 : (textA > textB) ? 1 : 0
-                }).filter((library) => {
-                  if (library.default) { return 1 }
-                  return 0
-                }).map(
-                  (library) => {
-                    return (libraryDropDown(library))
-                  }
-                )}
-              </div>
-              <div style={!additional ? { display: 'none' } : {}}>
-                <ListItem dense divider style={{ backgroundColor: '#e8e8e8' }}>
-                  <span className={classes.head}>ADDITIONAL</span>
-                </ListItem>
-                { libraries.sort(function (a, b) {
-                  const textA = a.library_name.toUpperCase()
-                  const textB = b.library_name.toUpperCase()
-                  return (textA < textB) ? -1 : (textA > textB) ? 1 : 0
-                }).filter((library) => {
-                  if (library.additional) { return 1 }
-                  return 0
-                }).map(
-                  (library) => {
-                    return (libraryDropDown(library))
-                  }
-                )}
-              </div>
-              <div style={!uploaded ? { display: 'none' } : {}}>
-                <ListItem dense divider style={{ backgroundColor: '#e8e8e8' }}>
-                  <span className={classes.head}>UPLOADED</span>
-                </ListItem>
-                { libraries.sort(function (a, b) {
-                  const textA = a.library_name.toUpperCase()
-                  const textB = b.library_name.toUpperCase()
-                  return (textA < textB) ? -1 : (textA > textB) ? 1 : 0
-                }).filter((library) => {
-                  if (!library.default && !library.additional) { return 1 }
-                  return 0
-                }).map(
-                  (library) => {
-                    return (libraryDropDown(library))
-                  }
-                )}
-              </div>
-            </>
-            }
-
-          </div>
-        </List>
-      </div>
-      <div style={isSimulate ? {} : { display: 'none' }}>
-        {/* Display simulation modes parameters on left side pane */}
-        <List>
-          <ListItem button divider>
-            <h2 style={{ margin: '5px auto 5px 5px' }}>Simulation Modes</h2>
-            <Tooltip title="close">
-              <IconButton color="inherit" className={classes.tools} size="small" onClick={() => { dispatch(toggleSimulate()) }}>
-                <CloseIcon fontSize="small" />
-              </IconButton>
+                <ListItemIcon className={classes.icon}>
+                  {cat.icon}
+                </ListItemIcon>
+              </ListItem>
             </Tooltip>
-          </ListItem>
-          <SimulationProperties ltiSimResult={ltiSimResult} setLtiSimResult={setLtiSimResult} />
+          ))}
         </List>
       </div>
 
-      {/* Global snackbar for star toggle feedback */}
-      <Snackbar
-        style={{ zIndex: 100 }}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
-        open={snackbar.open}
-        autoHideDuration={2000}
-        onClose={closeSnackbar}
-        message={snackbar.message}
-        action={
-          <>
-            <IconButton size="small" aria-label="close" color="inherit" onClick={closeSnackbar}>
-              <CloseIcon fontSize="small" />
-            </IconButton>
-          </>
-        }
-      />
+      {/* Flyout panel — always rendered so it can open regardless of mode */}
+      <Popper
+        open={open}
+        anchorEl={anchorEl}
+        placement="right-start"
+        transition
+        style={{ zIndex: 1300 }}
+        modifiers={{
+          preventOverflow: {
+            enabled: true,
+            boundariesElement: 'window'
+          },
+          flip: {
+            enabled: true
+          },
+          offset: {
+            enabled: true,
+            offset: '0, 0'
+          }
+        }}
+      >
+        {({ TransitionProps }) => (
+          <Fade {...TransitionProps} timeout={350}>
+            <Paper className={classes.flyoutPaper} elevation={8}>
+              <ClickAwayListener onClickAway={handleClose}>
+                <div ref={compRef} className={classes.flyoutContent}>
+
+                  <div style={{ backgroundColor: '#fff', padding: '8px', borderBottom: '1px solid #ccc', marginBottom: '8px' }}>
+                    {activeCategory?.id === 'search' ? (
+                      <>
+                        <TextField
+                          id="standard-number"
+                          placeholder="Search Component"
+                          variant="outlined"
+                          size="small"
+                          fullWidth
+                          value={searchText}
+                          onChange={handleSearchText}
+                          InputProps={{
+                            startAdornment: (
+                              <InputAdornment position="start">
+                                <SearchIcon />
+                              </InputAdornment>
+                            )
+                          }}
+                          style={{ marginBottom: '8px' }}
+                        />
+                        <TextField
+                          style={{ width: '100%' }}
+                          id="searchType"
+                          size='small'
+                          variant="outlined"
+                          select
+                          label="Search By"
+                          value={searchOption}
+                          onChange={handleSearchOptionType}
+                          SelectProps={{
+                            native: true
+                          }}
+                        >
+                          {searchOptionsList.map((value, i) => (
+                            <option key={i} value={value}>
+                              {value}
+                            </option>
+                          ))}
+                        </TextField>
+                      </>
+                    ) : (
+                      <Typography variant="subtitle2" style={{ fontWeight: 'bold', color: '#555' }}>
+                        {activeCategory?.name}
+                      </Typography>
+                    )}
+                  </div>
+
+                  <Grid container spacing={1} className={classes.gridContainer}>
+                    {activeCategory?.isProbeCategory ? (
+                      <div style={{ padding: '12px 8px', width: '100%' }}>
+                        <Typography variant="caption" style={{ color: '#888', display: 'block', marginBottom: '12px' }}>
+                          Drag a probe onto the canvas. Voltage probes snap to wires.
+                        </Typography>
+                        <Grid container spacing={2}>
+                          <Grid item xs={12} style={{ display: 'flex', justifyContent: 'center' }}>
+                            <ProbeItem
+                              probeType="V"
+                              label="Voltage Probe"
+                              color="#00e676"
+                              description="Drag onto a wire to measure node voltage"
+                            />
+                          </Grid>
+                        </Grid>
+                      </div>
+                    ) : activeCategory?.isFavouritesCategory ? (
+                      <div style={{ maxHeight: '70vh', overflowY: 'auto', overflowX: 'hidden', width: '100%' }} >
+                        {favourites.length === 0 ? (
+                          <div style={{ padding: '16px', color: '#888', fontStyle: 'italic', width: '100%', textAlign: 'center' }}>
+                            <Typography variant="body2">No Favourites Added</Typography>
+                          </div>
+                        ) : (
+                          <Grid container spacing={1}>
+                            {favourites.map((comp) => (
+                              <Grid item xs={4} key={comp.id} style={{ display: 'flex', padding: '4px' }}>
+                                <SideComp component={comp} setFavourite={setFavourites} favourite={favourites} />
+                              </Grid>
+                            ))}
+                          </Grid>
+                        )}
+                      </div>
+                    ) : activeCategory?.id === 'search' ? (
+                      <div style={{ maxHeight: '70vh', overflowY: 'auto', overflowX: 'hidden', width: '100%' }} >
+                        {searchText.length !== 0 && searchedComponentList.length !== 0 &&
+                          searchedComponentList.map((component, i) => {
+                            return (<ListItemIcon key={i} style={{ width: '33%', display: 'inline-flex', padding: '4px', boxSizing: 'border-box' }}>
+                              <SideComp component={component} />
+                            </ListItemIcon>)
+                          })
+                        }
+                        <ListItem style={{ display: loading ? 'flex' : 'none', justifyContent: 'center' }}>
+                          <Loader
+                            type="TailSpin"
+                            color="#F44336"
+                            height={50}
+                            width={50}
+                            visible={loading}
+                          />
+                        </ListItem>
+                        {!loading && searchText.length !== 0 && isSearchedResultsEmpty && (
+                          <div style={{ padding: '16px', color: '#888', fontStyle: 'italic', width: '100%', textAlign: 'center' }}>
+                            <Typography variant="body2">No Components Found</Typography>
+                          </div>
+                        )}
+                        {searchText.length === 0 && (
+                          <div style={{ padding: '16px', color: '#888', fontStyle: 'italic', width: '100%', textAlign: 'center' }}>
+                            <Typography variant="body2">Type to search components...</Typography>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      loading ? (
+                        <div style={{ display: 'flex', justifyContent: 'center', width: '100%', padding: '16px' }}>
+                          <Loader
+                            type="TailSpin"
+                            color="#F44336"
+                            height={50}
+                            width={50}
+                            visible={true}
+                          />
+                        </div>
+                      ) : activeComponents.length === 0 ? (
+                        <div style={{ padding: '16px', color: '#888', fontStyle: 'italic', width: '100%', textAlign: 'center' }}>
+                          <Typography variant="body2">No components loaded in this category.</Typography>
+                        </div>
+                      ) : (
+                        (showAdvanced ? activeComponents : activeComponents.slice(0, 9)).map((comp) => (
+                          <Grid item xs={showAdvanced ? 3 : 4} key={comp.full_name} style={{ display: 'flex', padding: '4px' }}>
+                            <SideComp component={comp} setFavourite={setFavourites} favourite={favourites} />
+                          </Grid>
+                        ))
+                      )
+                    )}
+
+                    {activeCategory?.id !== 'search' && activeComponents.length > 9 && !showAdvanced && (
+                      <div style={{ width: '100%', textAlign: 'center', marginTop: '8px' }}>
+                        <Typography
+                          variant="caption"
+                          style={{ color: '#1976d2', cursor: 'pointer', fontWeight: 'bold' }}
+                          onClick={() => setShowAdvanced(true)}
+                        >
+                          + {activeComponents.length - 9} More Variants
+                        </Typography>
+                      </div>
+                    )}
+                  </Grid>
+                </div>
+              </ClickAwayListener>
+            </Paper>
+          </Fade>
+        )}
+      </Popper>
+
     </>
   )
 }
 
 ComponentSidebar.propTypes = {
-  compRef: PropTypes.object.isRequired,
+  compRef: PropTypes.oneOfType([
+    PropTypes.func,
+    PropTypes.shape({ current: PropTypes.instanceOf(Element) })
+  ]),
   ltiSimResult: PropTypes.string,
   setLtiSimResult: PropTypes.func
 }

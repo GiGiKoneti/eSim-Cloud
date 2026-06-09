@@ -11,6 +11,7 @@ import StarBorderIcon from '@material-ui/icons/StarBorder'
 
 import './Helper/SchematicEditor.css'
 import { AddComponent } from './Helper/SideBar.js'
+import { prefetchSvg } from './Helper/SvgParser.js'
 import { addFavourite, removeFavourite, isFavourite } from '../../utils/favouritesStorage'
 
 const useStyles = makeStyles((theme) => ({
@@ -67,6 +68,8 @@ export default function SideComp ({ favourite, setFavourite, component }) {
   const id = open ? 'simple-popover' : undefined
 
   useEffect(() => {
+    // Pre-fetch SVG data so first drag is instant (no network wait)
+    prefetchSvg(component)
     // Make component thumbnail draggable onto the mxGraph canvas
     AddComponent(component, imageRef.current)
     // eslint-disable-next-line
@@ -112,38 +115,44 @@ export default function SideComp ({ favourite, setFavourite, component }) {
 
   return (
     <div>
-      {/* Wrapper gives the star IconButton an absolute-position anchor */}
-      <div className={classes.compWrapper}>
-        <Tooltip title={component.full_name + ' : ' + component.description} arrow>
-          {/* Display Image thumbnail; also the drag source registered by AddComponent */}
-          <img
-            ref={imageRef}
-            className='compImage'
-            src={'../' + (component.svg_path || '')}
-            alt={component.name || 'component'}
-            aria-describedby={id}
-            onClick={handleClick}
-            onError={(e) => { e.target.style.visibility = 'hidden' }}
-          />
-        </Tooltip>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
+        {/* Wrapper gives the star IconButton an absolute-position anchor */}
+        <div className={classes.compWrapper}>
+          <Tooltip title={component.full_name + ' : ' + component.description} arrow>
+            {/* Display Image thumbnail; also the drag source registered by AddComponent */}
+            <img
+              ref={imageRef}
+              className='compImage'
+              src={'../' + (component.svg_path || '')}
+              alt={component.name || 'component'}
+              aria-describedby={id}
+              onClick={handleClick}
+              onError={(e) => { e.target.style.visibility = 'hidden' }}
+            />
+          </Tooltip>
 
-        {/* Star icon overlay — shown for ALL users, no auth required */}
-        <Tooltip title={isStarred() ? 'Remove from favourites' : 'Add to favourites'} arrow>
-          <IconButton
-            className={classes.starBtn}
-            size="small"
-            onClick={handleStarToggle}
-            aria-label={
-              isStarred()
-                ? `Remove ${component.name} from favourites`
-                : `Add ${component.name} to favourites`
-            }
-          >
-            {isStarred()
-              ? <StarIcon className={classes.starIconOn} />
-              : <StarBorderIcon className={classes.starIconOff} />}
-          </IconButton>
-        </Tooltip>
+          {/* Star icon overlay — shown for ALL users, no auth required */}
+          <Tooltip title={isStarred() ? 'Remove from favourites' : 'Add to favourites'} arrow>
+            <IconButton
+              className={classes.starBtn}
+              size="small"
+              onClick={handleStarToggle}
+              aria-label={
+                isStarred()
+                  ? `Remove ${component.name} from favourites`
+                  : `Add ${component.name} to favourites`
+              }
+            >
+              {isStarred()
+                ? <StarIcon className={classes.starIconOn} />
+                : <StarBorderIcon className={classes.starIconOff} />}
+            </IconButton>
+          </Tooltip>
+        </div>
+
+        <span style={{ fontSize: '11px', textAlign: 'center', marginTop: '4px', color: '#555', wordBreak: 'break-word', lineHeight: '1.2' }}>
+          {component.name}
+        </span>
       </div>
 
       {/* Popover — shows component details on thumbnail click */}
