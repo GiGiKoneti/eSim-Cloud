@@ -71,7 +71,10 @@ import {
   Redo,
   Save,
   ClearGrid,
-  RotateACW
+  RotateACW,
+  CopyComponents,
+  PasteComponents,
+  SelectAll
 } from './Helper/ToolbarTools'
 import {
   toggleSimulate,
@@ -198,9 +201,8 @@ export default function SchematicToolbar ({
           setActiveSimResult(res.data[res.data.length - 1].id)
         })
         .catch((err) => {
-          console.log(err)
+          console.error(err)
         })
-      console.log('SIM RESULTS FOUND')
       setLtiSimResult(false)
     }
     // eslint-disable-next-line
@@ -360,14 +362,13 @@ export default function SchematicToolbar ({
             setScored(res.data.scored)
           }
         })
-        .catch((err) => console.log(err))
+        .catch((err) => console.error(err))
     }
     // eslint-disable-next-line
   }, [ltiId]);
 
   useEffect(() => {
     if (consumerKey) {
-      console.log(schSave)
       api
         .get(`lti/exist/${id}`)
         .then((res) => {
@@ -377,7 +378,7 @@ export default function SchematicToolbar ({
             setScored(res.data.scored)
           }
         })
-        .catch((err) => console.log(err))
+        .catch((err) => console.error(err))
     }
     // eslint-disable-next-line
   }, [consumerKey]);
@@ -393,18 +394,16 @@ export default function SchematicToolbar ({
         },
         student_simulation: activeSimResult
       }
-      console.log(body)
       api
         .post('lti/submit/', body)
         .then((res) => {
-          console.log(res.data)
           setSubmissionDetails(res.data)
           setResults(true)
           setSubmit(true)
           setSubmitMessage(res.data.message)
         })
         .catch((err) => {
-          console.log(err)
+          console.error(err)
           setSubmit(true)
           setSubmitMessage(
             'There was an error while submitting. Please try again later!'
@@ -772,6 +771,23 @@ export default function SchematicToolbar ({
           handleLocalSchSave()
         }
       }
+      // Copy - Ctrl + C
+      if (event.ctrlKey && event.keyCode === 67) {
+        console.log('[shortcut] Ctrl+C detected')
+        event.preventDefault()
+        CopyComponents()
+      }
+      // Paste - Ctrl + V
+      if (event.ctrlKey && event.keyCode === 86) {
+        console.log('[shortcut] Ctrl+V detected')
+        event.preventDefault()
+        PasteComponents()
+      }
+      // Select All - Ctrl + A
+      if (event.ctrlKey && event.keyCode === 65) {
+        event.preventDefault()
+        SelectAll()
+      }
     }
 
     window.addEventListener('keydown', shrtcts)
@@ -1061,7 +1077,7 @@ export default function SchematicToolbar ({
           <RotateLeft fontSize="small" />
         </IconButton>
       </Tooltip>
-      <Tooltip title="Rotate ClockWise (Alt + Right Arrow)">
+      <Tooltip title="Rotate ClockWise (Ctrl + R / Alt + Right Arrow)">
         <IconButton
           color="inherit"
           className={classes.tools}

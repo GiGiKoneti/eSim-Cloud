@@ -6,10 +6,10 @@ import store from '../../redux/store'
  */
 export const buildEditorContext = () => {
   const state = store.getState()
-  
+
   const context = {
     page: 'simulator',
-    netlist: state.netlistReducer?.netlist || '',
+    netlist: state.netlistReducer?.netlist || ''
     // There is no lastSimulationError in Redux, but the error text is already
     // sent directly inside the message string via the CustomEvent pre-fill!
   }

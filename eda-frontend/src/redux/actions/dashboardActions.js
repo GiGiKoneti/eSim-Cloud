@@ -18,8 +18,6 @@ export const fetchSchematics = () => (dispatch, getState) => {
   return api.get('save/list', config)
     .then(
       (res) => {
-        console.log(res.data)
-
         dispatch({
           type: actions.FETCH_SCHEMATICS,
           payload: res.data
@@ -48,7 +46,6 @@ export const fetchMyProjects = () => (dispatch, getState) => {
   api.get('publish/myproject/', config)
     .then(
       (res) => {
-        console.log(res.data)
         dispatch({
           type: actions.FETCH_MY_PROJECTS,
           payload: res.data
@@ -103,7 +100,6 @@ export const fetchPublicProjects = () => (dispatch, getState) => {
           type: actions.FETCH_PUBLIC_PROJECTS,
           payload: res.data
         })
-        console.log(res.data[0].status)
       }
     )
     .catch((err) => { console.error(err) })
@@ -126,7 +122,6 @@ export const deleteSchematic = (saveId) => (dispatch, getState) => {
     .then(
       (res) => {
         if (res.status === 200 || res.status === 204) {
-          console.log('Called Delete')
           dispatch(fetchSchematics())
         }
       }
