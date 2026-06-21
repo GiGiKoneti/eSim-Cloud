@@ -30,7 +30,7 @@ class Command(BaseCommand):
             )
             logger.info(
                 f"Creating user {options['username']}"
-                " with password {options['password']}")
+                f" with password {options['password']}")
             user.save()
         else:
             raise Exception("Username or Password not present")

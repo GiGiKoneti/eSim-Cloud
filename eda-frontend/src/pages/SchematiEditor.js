@@ -43,6 +43,8 @@ export default function SchematiEditor (props) {
   const isSimulate = useSelector(state => state.schematicEditorReducer.isSimulate)
   const [mobileOpen, setMobileOpen] = React.useState(false)
   const [ltiSimResult, setLtiSimResult] = React.useState(false)
+  const [leftWidth, setLeftWidth] = React.useState(250)
+  const [rightWidth, setRightWidth] = React.useState(250)
   const [simulateOpen, setSimulateOpen] = React.useState(false)
   const [isResult, setIsResult] = React.useState(false)
   const [taskId, setTaskId] = React.useState(null)
@@ -116,6 +118,8 @@ export default function SchematiEditor (props) {
 
       {/* Schematic editor header, toolbar and left side pane */}
       <Layout
+        sidebarWidth={leftWidth}
+        onSidebarResize={setLeftWidth}
         header={gridRef && <Header gridRef={gridRef}/> }
         resToolbar={
           <SchematicToolbar
@@ -163,7 +167,8 @@ export default function SchematiEditor (props) {
         </div>
       </LayoutMain>
 
-      <RightSidebar mobileOpen={mobileOpen} mobileClose={handleDrawerToggle}>
+      {/* Schematic editor Right side pane */}
+      <RightSidebar width={rightWidth} onResize={setRightWidth} mobileOpen={mobileOpen} mobileClose={handleDrawerToggle}>
         {isSimulate ? (
           <SimulationProperties
             setSimulateOpen={setSimulateOpen}

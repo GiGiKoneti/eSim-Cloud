@@ -454,7 +454,7 @@ function Header ({ gridRef }) {
                 onClick={handleHomeOpen}
                 component={RouterLink}
                 className={classes.link}
-                style={{ marginLeft: '61%', marginRight: '20px' }}
+                style={{ marginLeft: 'auto', marginRight: '20px' }}
                 value="home"
               >
                 Home
